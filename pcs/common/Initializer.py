@@ -25,8 +25,8 @@ class Initializer:
 
     def init_app(self):
         self.pre_init()
-        # self.configure_login()
         self.register_blueprints()
+        # self.configure_login()
         self.post_init()
 
     def register_blueprints(self):

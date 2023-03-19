@@ -1,2 +1,1 @@
-class Config:
-    pass
+A = 1

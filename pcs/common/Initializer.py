@@ -1,9 +1,9 @@
-from flask_login import LoginManager
 from pcs.base import pcs_bp
+from flask_sqlalchemy import SQLAlchemy
 import logging
 
 logger = logging.getLogger(__name__)
-
+db = SQLAlchemy()
 
 class Initializer:
     def __init__(self, app):
@@ -26,12 +26,12 @@ class Initializer:
     def init_app(self):
         self.pre_init()
         self.register_blueprints()
-        # self.configure_login()
+        self.config_sqlalchemy()
         self.post_init()
 
     def register_blueprints(self):
         self.pcs_app.register_blueprint(pcs_bp)
 
-    def configure_login(self):
-        login_manager = LoginManager()
-        login_manager.init_app(self.pcs_app)
+    def config_sqlalchemy(self):
+        db.init_app(self.pcs_app)
+        self.pcs_app.db = db

@@ -17,3 +17,4 @@ class UserModel(db.Model):
     write_uid = db.Column(db.Integer, nullable=False)
     active = db.Column(db.Boolean, default=True, nullable=False)
     last_login = db.Column(db.DateTime)
+    memo = db.Column(db.String)

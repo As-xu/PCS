@@ -13,5 +13,5 @@ class UserLogModel(db.Model):
     write_date = db.Column(db.DateTime, nullable=False)
     write_uid = db.Column(db.Integer, nullable=False)
 
-    
+
 

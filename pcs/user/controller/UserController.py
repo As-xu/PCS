@@ -1,6 +1,6 @@
 from pcs.base.BaseController import BaseController
 from pcs.user.model import UserModel
-from pcs.common import db
+from pcs import db
 
 
 

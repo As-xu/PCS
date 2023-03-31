@@ -1,4 +1,4 @@
-from pcs.common import db
+from pcs import db
 
 
 class UserLogModel(db.Model):
@@ -13,5 +13,5 @@ class UserLogModel(db.Model):
     write_date = db.Column(db.DateTime, nullable=False)
     write_uid = db.Column(db.Integer, nullable=False)
 
-    
+
 

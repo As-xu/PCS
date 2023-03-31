@@ -1,17 +1,14 @@
 import logging
-import os
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('pcs')
 
-from pcs.common.Initializer import Initializer
+from pcs.initialization import Initializer
 from pcs.base.BaseFlaskApp import BaseFlaskApp
 
 
 def create_app(config=None):
     app = BaseFlaskApp(__name__, template_folder='templates')
     try:
-        # config_module = os.environ.get("PCS_CONFIG", "pcs.config")
-
         if config:
             app.config.from_object(config)
 

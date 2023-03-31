@@ -1,4 +1,4 @@
-from pcs.common import db
+from pcs import db
 
 
 class UserLoginModel(db.Model):

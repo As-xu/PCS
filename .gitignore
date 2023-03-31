@@ -14,18 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+__pycache__
+cache/
+.idea
+
 *.bak
 *.db
 *.pyc
 *.sqllite
 *.swp
-__pycache__
+*.cfg
+
 
 .local
 .cache
 .env
 .envrc
-.idea
 .vscode
 _build
 _images
@@ -37,4 +42,3 @@ env
 venv*
 tmp
 
-cache/

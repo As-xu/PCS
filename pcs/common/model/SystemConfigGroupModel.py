@@ -1,4 +1,5 @@
-from pcs.common import db
+from pcs import db
+
 
 class SystemConfigModel(db.Model):
     __tablename__ = "system_config_group_list"

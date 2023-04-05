@@ -1,1 +1,1 @@
-from pcs.base.BaseBlueprint import base_bp, BlueprintFactory as Bf
+from pcs.base.base_blueprint import base_bp, BlueprintFactory as Bf

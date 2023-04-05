@@ -1,5 +1,5 @@
-from pcs.base.BaseController import BaseController
-from pcs.user.model import UserModel
+from pcs.base.base_controller import BaseController
+from pcs.user.model import user_model
 from pcs import db
 
 

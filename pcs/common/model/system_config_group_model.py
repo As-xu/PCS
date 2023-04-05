@@ -1,7 +1,7 @@
 from pcs import db
 
 
-class SystemConfigModel(db.Model):
+class SystemConfigGroupModel(db.Model):
     __tablename__ = "system_config_group_list"
 
     id = db.Column(db.Integer, db.Sequence(__tablename__ + '_id_seq'), primary_key=True)

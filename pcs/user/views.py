@@ -1,6 +1,6 @@
 from flask import render_template, current_app
 from pcs.user import user_bp
-from pcs.user.controller.UserController import UserController
+from pcs.user.controller.user_controller import UserController
 
 import logging
 

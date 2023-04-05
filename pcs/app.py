@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger('pcs')
 
 from pcs.initialization import Initializer
-from pcs.base.BaseFlaskApp import BaseFlaskApp
+from pcs.base.base_flask_app import BaseFlaskApp
 
 
 def create_app(config=None):

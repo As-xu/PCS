@@ -1,5 +1,5 @@
 from pcs import db
-from pcs.common.Enum.UserEnum import UserTypeEnum
+from pcs.common.Enum.user_enum import UserTypeEnum
 
 
 class UserModel(db.Model):

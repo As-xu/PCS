@@ -1,10 +1,28 @@
 from pcs.base.base_controller import BaseController
-from pcs.user.model import user_model
-from pcs import db
+from flask_jwt_extended import create_access_token
+from flask import current_app, jsonify
+from pcs.user.model.user_model import UserModel
+import logging
 
+logger = logging.getLogger(__name__)
 
 
 class UserController(BaseController):
     def create_user(self):
-        db.create_all()
-        a = 1
+        pass
+
+    def user_login(self, request_data):
+        username = request_data.get("user_name")
+        password = request_data.get("password")
+        UserModel.search()
+        access_token = create_access_token(identity=username)
+        return jsonify(access_token=access_token)
+
+    def user_register(self, request_data):
+        username = request_data.get("username")
+        password = request_data.get("password")
+        db = current_app.db
+
+        # Notice that we are passing in the actual sqlalchemy user object here
+        access_token = create_access_token(identity=username)
+        return jsonify(access_token=access_token)

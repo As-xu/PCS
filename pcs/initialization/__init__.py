@@ -1,5 +1,7 @@
 from pcs.base import base_bp
+from pcs.base.base_model import BaseModel, BaseQuery
 from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
 import os
 import logging
@@ -7,7 +9,8 @@ import logging.handlers
 
 
 logger = logging.getLogger(__name__)
-db = SQLAlchemy()
+db = SQLAlchemy(model_class=BaseModel, query_class=BaseQuery)
+jwt = JWTManager()
 
 
 class Initializer:
@@ -33,6 +36,7 @@ class Initializer:
         self.setup_log()
         self.register_blueprints()
         self.config_sqlalchemy()
+        self.config_jwt()
         self.init_hook()
         self.post_init()
 
@@ -42,6 +46,10 @@ class Initializer:
     def config_sqlalchemy(self):
         db.init_app(self.pcs_app)
         self.pcs_app.db = db
+        db.Model.db_engine = db.engine
+
+    def config_jwt(self):
+        jwt.init_app(self.pcs_app)
 
     def setup_log(self):
         from pcs.common.LoggingConfig import PCSFormatter

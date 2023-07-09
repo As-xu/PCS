@@ -31,6 +31,13 @@ SQLALCHEMY_MAX_OVERFLOW = 3  # 控制在连接池达到最大值后可以创建�
 SQLALCHEMY_TRACK_MODIFICATIONS = True  # 追踪对象的修改并且发送信号
 SQLALCHEMY_COMMIT_ON_TEARDOWN = False
 
+# JWT配置
+JWT_SECRET_KEY = SECRET_KEY
+# PROPAGATE_EXCEPTIONS = True
+
 # 日志配置
 LOG_FILE_NAME = "pcs_server.log"
 LOG_LEVEL = logging.INFO
+
+# 服务配置
+SERVER_NAME = "127.0.0.1:5000"

@@ -8,3 +8,4 @@ logger = logging.getLogger(__name__)
 @center_bp.route('/')
 def index():
     return render_template('index.html')
+

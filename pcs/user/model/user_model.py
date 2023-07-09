@@ -1,3 +1,4 @@
+from pcs.base.base_model import BaseModel
 from pcs import db
 from pcs.common.Enum.user_enum import UserTypeEnum
 
@@ -18,3 +19,4 @@ class UserModel(db.Model):
     active = db.Column(db.Boolean, default=True, nullable=False)
     last_login = db.Column(db.DateTime)
     memo = db.Column(db.String)
+

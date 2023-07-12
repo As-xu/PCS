@@ -1,6 +1,6 @@
 from pcs.base import base_bp
 from pcs.base.base_model import BaseModel, BaseQuery
-from flask_sqlalchemy import SQLAlchemy
+from dbutils import simple_pooled_pg
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
 import os
@@ -9,7 +9,6 @@ import logging.handlers
 
 
 logger = logging.getLogger(__name__)
-db = SQLAlchemy(model_class=BaseModel, query_class=BaseQuery)
 jwt = JWTManager()
 
 
@@ -44,9 +43,7 @@ class Initializer:
         self.pcs_app.register_blueprint(base_bp)
 
     def config_sqlalchemy(self):
-        db.init_app(self.pcs_app)
-        self.pcs_app.db = db
-        db.Model.db_engine = db.engine
+        pass
 
     def config_jwt(self):
         jwt.init_app(self.pcs_app)

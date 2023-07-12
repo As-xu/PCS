@@ -1,25 +1,36 @@
-from flask_sqlalchemy import Model
-from flask_sqlalchemy import BaseQuery as SqlalchemyBaseQuery
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class BaseModel(Model):
+class BaseModel(object):
     db_engine = None
 
-    def search(self):
+    @classmethod
+    def search(cls, condition, fields=None, offset=None, limit=None, order_by=None):
         return None
 
-    def paginate_query(self):
+    @classmethod
+    def _query(cls, sql, params=None):
         return None
 
-    def delete(self):
+    @classmethod
+    def paginate_query(cls):
         return None
 
-    def update(self):
+    @classmethod
+    def delete(cls):
         return None
 
+    @classmethod
+    def batch_create(cls):
+        return None
 
-class BaseQuery(SqlalchemyBaseQuery):
-    pass
+    @classmethod
+    def update(cls):
+        return None
+
+    @classmethod
+    def _write(cls):
+        return None
+

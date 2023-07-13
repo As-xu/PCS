@@ -1,58 +1,30 @@
 from .steady_db import connect
 
 try:
-    # Prefer the pure Python version of threading.local.
-    # The C implementation turned out to be problematic with mod_wsgi,
-    # since it does not keep the thread-local data between requests.
     from _threading_local import local
 except ImportError:
-    # Fall back to the default version of threading.local.
     from threading import local
 
 
 class PersistentDBError(Exception):
-    """General PersistentDB error."""
+    """常规持久数据库错误."""
 
 
 class NotSupportedError(PersistentDBError):
-    """DB-API module not supported by PersistentDB."""
+    """持久数据库不支持 DB-API 模块."""
 
 
 class PersistentDB:
-    """Generator for persistent DB-API 2 connections.
-
-    After you have created the connection pool, you can use
-    connection() to get thread-affine, steady DB-API 2 connections.
+    """用于持久 DB-API 2 连接的生成器。创建连接池后，可以使用 connection（） 来获取线程仿射、稳定的 DB-API 2 连接。
     """
 
     def __init__(
             self, creator,
             maxusage=None, setsession=None, failures=None, ping=1,
             closeable=False, threadlocal=None, *args, **kwargs):
-        """Set up the persistent DB-API 2 connection generator.
-
-        creator: either an arbitrary function returning new DB-API 2
-            connection objects or a DB-API 2 compliant database module
-        maxusage: maximum number of reuses of a single connection
-            (number of database operations, 0 or None means unlimited)
-            Whenever the limit is reached, the connection will be reset.
-        setsession: optional list of SQL commands that may serve to prepare
-            the session, e.g. ["set datestyle to ...", "set time zone ..."]
-        failures: an optional exception class or a tuple of exception classes
-            for which the connection failover mechanism shall be applied,
-            if the default (OperationalError, InterfaceError, InternalError)
-            is not adequate for the used database module
-        ping: determines when the connection should be checked with ping()
-            (0 = None = never, 1 = default = whenever it is requested,
-            2 = when a cursor is created, 4 = when a query is executed,
-            7 = always, and all other bit combinations of these values)
-        closeable: if this is set to true, then closing connections will
-            be allowed, but by default this will be silently ignored
-        threadlocal: an optional class for representing thread-local data
-            that will be used instead of our Python implementation
-            (threading.local is faster, but cannot be used in all cases)
-        args, kwargs: the parameters that shall be passed to the creator
-            function or the connection constructor of the DB-API 2 module
+        """
+        threadlocal:用于表示线程本地数据的可选类, 将用于代替我们的 Python 实现（threading.local 更快，但不能在所有情况下都使用）
+        closeable:如果设置为 true，则允许关闭连接，但默认情况下将静默忽略
         """
         try:
             threadsafety = creator.threadsafety
@@ -79,18 +51,16 @@ class PersistentDB:
         self.thread = (threadlocal or local)()
 
     def steady_connection(self):
-        """Get a steady, non-persistent DB-API 2 connection."""
+        """获取稳定、非持久性的 DB-API 2 连接。"""
         return connect(
             self._creator, self._maxusage, self._setsession,
             self._failures, self._ping, self._closeable,
             *self._args, **self._kwargs)
 
-    def connection(self, shareable=False):
-        """Get a steady, persistent DB-API 2 connection.
-
-        The shareable parameter exists only for compatibility with the
-        PooledDB connection method.  In reality, persistent connections
-        are of course never shared with other threads.
+    def connection(self):
+        """获得稳定、持久的 DB-API 2 连接。
+        可共享参数的存在只是为了与池数据库连接方法。 实际上，持久连接
+        当然，绝不会与其他线程共享。
         """
         try:
             con = self.thread.connection
@@ -102,6 +72,3 @@ class PersistentDB:
         con._ping_check()
         return con
 
-    def dedicated_connection(self):
-        """Alias for connection(shareable=False)."""
-        return self.connection()

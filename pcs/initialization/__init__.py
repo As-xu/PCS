@@ -1,11 +1,13 @@
 from pcs.base import base_bp
-from pcs.base.base_model import BaseModel, BaseQuery
-from dbutils import simple_pooled_pg
+from pcs.base.base_model import BaseModel
+from pcs.extensions.db_link_extension.pooled_db import PooledDB
+import psycopg2
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
 import os
 import logging
 import logging.handlers
+
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +36,7 @@ class Initializer:
         self.pre_init()
         self.setup_log()
         self.register_blueprints()
-        self.config_sqlalchemy()
+        self.init_db()
         self.config_jwt()
         self.init_hook()
         self.post_init()
@@ -42,8 +44,10 @@ class Initializer:
     def register_blueprints(self):
         self.pcs_app.register_blueprint(base_bp)
 
-    def config_sqlalchemy(self):
-        pass
+    def init_db(self):
+        self.pcs_app.db = PooledDB(
+            creator=psycopg2
+        )
 
     def config_jwt(self):
         jwt.init_app(self.pcs_app)

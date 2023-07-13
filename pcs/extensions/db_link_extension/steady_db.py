@@ -2,38 +2,17 @@ import sys
 
 
 class SteadyDBError(Exception):
-    """General SteadyDB error."""
+    """通用Steady数据库错误。"""
 
 
 class InvalidCursor(SteadyDBError):
-    """Database cursor is invalid."""
+    """数据库游标无效"""
 
 
 def connect(
         creator, maxusage=None, setsession=None,
         failures=None, ping=1, closeable=True, *args, **kwargs):
-    """A tough version of the connection constructor of a DB-API 2 module.
-
-    creator: either an arbitrary function returning new DB-API 2 compliant
-        connection objects or a DB-API 2 compliant database module
-    maxusage: maximum usage limit for the underlying DB-API 2 connection
-        (number of database operations, 0 or None means unlimited usage)
-        callproc(), execute() and executemany() count as one operation.
-        When the limit is reached, the connection is automatically reset.
-    setsession: an optional list of SQL commands that may serve to prepare
-        the session, e.g. ["set datestyle to german", "set time zone mez"]
-    failures: an optional exception class or a tuple of exception classes
-        for which the failover mechanism shall be applied, if the default
-        (OperationalError, InternalError, Interface) is not adequate
-        for the used database module
-    ping: determines when the connection should be checked with ping()
-        (0 = None = never, 1 = default = when _ping_check() is called,
-        2 = whenever a cursor is created, 4 = when a query is executed,
-        7 = always, and all other bit combinations of these values)
-    closeable: if this is set to false, then closing the connection will
-        be silently ignored, but by default the connection can be closed
-    args, kwargs: the parameters that shall be passed to the creator
-        function or the connection constructor of the DB-API 2 module
+    """closeable: 如果设置为 false，则关闭连接将被静默忽略，但默认情况下可以关闭连接
     """
     return SteadyDBConnection(
         creator, maxusage, setsession,
@@ -41,16 +20,16 @@ def connect(
 
 
 class SteadyDBConnection:
-    """A "tough" version of DB-API 2 connections."""
+    """一个强健版本的DB链接"""
 
     def __init__(
             self, creator, maxusage=None, setsession=None,
             failures=None, ping=1, closeable=True, *args, **kwargs):
-        """Create a "tough" DB-API 2 connection."""
-        # basic initialization to make finalizer work
+        """创建一个强健的DB链接."""
+        # 基本初始化以使终结器工作
         self._con = None
         self._closed = True
-        # proper initialization of the connection
+        # 正确初始化连接
         try:
             self._creator = creator.connect
             try:
@@ -59,7 +38,7 @@ class SteadyDBConnection:
             except AttributeError:
                 self._dbapi = creator
         except AttributeError:
-            # try finding the DB-API 2 module via the connection creator
+            # 尝试通过连接创建器查找 DB 模块
             self._creator = creator
             try:
                 self._dbapi = creator.dbapi
@@ -95,13 +74,13 @@ class SteadyDBConnection:
         self._store(self._create())
 
     def __enter__(self):
-        """Enter the runtime context for the connection object."""
+        """输入连接对象的运行时上下文."""
         return self
 
     def __exit__(self, *exc):
-        """Exit the runtime context for the connection object.
+        """退出连接对象的运行时上下文.
 
-        This does not close the connection, but it ends a transaction.
+        这不会关闭连接，但会结束事务.
         """
         if exc[0] is None and exc[1] is None and exc[2] is None:
             self.commit()
@@ -109,14 +88,14 @@ class SteadyDBConnection:
             self.rollback()
 
     def _create(self):
-        """Create a new connection using the creator function."""
+        """使用创建器函数创建新连接."""
         con = self._creator(*self._args, **self._kwargs)
         try:
             try:
                 if self._dbapi.connect != self._creator:
                     raise AttributeError
             except AttributeError:
-                # try finding the DB-API 2 module via the connection itself
+                # 尝试通过连接本身查找 DB 模块
                 try:
                     mod = con.__module__
                 except AttributeError:
@@ -184,25 +163,23 @@ class SteadyDBConnection:
                                 con.InternalError)
                         except AttributeError:
                             raise AttributeError(
-                                "Could not determine failure exceptions"
-                                " (please set failures or creator.dbapi).")
+                                "Could not determine failure exceptions (please set failures or creator.dbapi).")
             if isinstance(self._failures, tuple):
                 self._failure = self._failures[0]
             else:
                 self._failure = self._failures
             self._setsession(con)
         except Exception as error:
-            # the database module could not be determined
-            # or the session could not be prepared
-            try:  # close the connection first
+            # 无法确定数据库模块或无法准备会话
+            try:  # 首先关闭连接
                 con.close()
             except Exception:
                 pass
-            raise error  # re-raise the original error again
+            raise error  # 再次引发原始错误
         return con
 
     def _setsession(self, con=None):
-        """Execute the SQL commands for session preparation."""
+        """执行 SQL 命令以进行会话准备."""
         if con is None:
             con = self._con
         if self._setsession_sql:
@@ -212,17 +189,15 @@ class SteadyDBConnection:
             cursor.close()
 
     def _store(self, con):
-        """Store a database connection for subsequent use."""
+        """存储数据库连接以供后续使用."""
         self._con = con
         self._transaction = False
         self._closed = False
         self._usage = 0
 
     def _close(self):
-        """Close the tough connection.
-
-        You can always close a tough connection with this method
-        and it will not complain if you close it more than once.
+        """关闭链接.
+        您始终可以使用此方法关闭艰难的连接 如果您多次关闭它，它不会引起异常.
         """
         if not self._closed:
             try:
@@ -233,9 +208,9 @@ class SteadyDBConnection:
             self._closed = True
 
     def _reset(self, force=False):
-        """Reset a tough connection.
+        """重置连接。
 
-        Rollback if forced or the connection was in a transaction.
+        如果强制或连接在事务中，则回滚。
         """
         if not self._closed and (force or self._transaction):
             try:
@@ -244,20 +219,18 @@ class SteadyDBConnection:
                 pass
 
     def _ping_check(self, ping=1, reconnect=True):
-        """Check whether the connection is still alive using ping().
-
-        If the the underlying connection is not active and the ping
-        parameter is set accordingly, the connection will be recreated
-        unless the connection is currently inside a transaction.
+        """使用 ping（） 检查连接是否仍处于活动状态。
+           如果基础连接未处于活动状态，并且相应地设置了 ping 参数，
+           则将重新创建连接，除非连接当前位于事务内。
         """
         if ping & self._ping:
-            try:  # if possible, ping the connection
+            try:  # 如果可能，请 ping 连接
                 try:  # pass a reconnect=False flag if this is supported
                     alive = self._con.ping(False)
-                except TypeError:  # the reconnect flag is not supported
+                except TypeError:  # 传递重新连接=False 标志（如果支持）
                     alive = self._con.ping()
             except (AttributeError, IndexError, TypeError, ValueError):
-                self._ping = 0  # ping() is not available
+                self._ping = 0  # ping（） 不可用
                 alive = None
                 reconnect = False
             except Exception:
@@ -268,7 +241,7 @@ class SteadyDBConnection:
                 if alive:
                     reconnect = False
             if reconnect and not self._transaction:
-                try:  # try to reopen the connection
+                try:  # 尝试重新打开连接
                     con = self._create()
                 except Exception:
                     pass
@@ -279,32 +252,26 @@ class SteadyDBConnection:
             return alive
 
     def dbapi(self):
-        """Return the underlying DB-API 2 module of the connection."""
+        """返回连接的基础 DB-API 2 模块."""
         if self._dbapi is None:
-            raise AttributeError(
-                "Could not determine DB-API 2 module"
-                " (please set creator.dbapi).")
+            raise AttributeError("Could not determine DB-API 2 module (please set creator.dbapi).")
         return self._dbapi
 
     def threadsafety(self):
-        """Return the thread safety level of the connection."""
+        """返回连接的线程安全级别."""
         if self._threadsafety is None:
             if self._dbapi is None:
                 raise AttributeError(
-                    "Could not determine threadsafety"
-                    " (please set creator.dbapi or creator.threadsafety).")
+                    "Could not determine threadsafety (please set creator.dbapi or creator.threadsafety).")
             return 0
         return self._threadsafety
 
     def close(self):
-        """Close the tough connection.
+        """关闭连接.
 
-        You are allowed to close a tough connection by default
-        and it will not complain if you close it more than once.
+        默认情况下，您可以关闭的连接，如果您多次关闭它，它不会引发异常。
 
-        You can disallow closing connections by setting
-        the closeable parameter to something false.  In this case,
-        closing tough connections will be silently ignored.
+        您可以通过将可关闭参数设置为 false 来禁止关闭连接。 在这种情况下，关闭强连接将被静默忽略。
         """
         if self._closeable:
             self._close()
@@ -312,13 +279,11 @@ class SteadyDBConnection:
             self._reset()
 
     def begin(self, *args, **kwargs):
-        """Indicate the beginning of a transaction.
+        """指示事务的开始.
 
-        During a transaction, connections won't be transparently
-        replaced, and all errors will be raised to the application.
+        在事务期间，连接不会被透明地替换，并且所有错误都将引发到应用程序.
 
-        If the underlying driver supports this method, it will be called
-        with the given parameters (e.g. for distributed transactions).
+        如果底层驱动程序支持此方法，则将使用给定的参数调用它（例如，对于分布式事务）
         """
         self._transaction = True
         try:
@@ -329,39 +294,39 @@ class SteadyDBConnection:
             begin(*args, **kwargs)
 
     def commit(self):
-        """Commit any pending transaction."""
+        """提交任何待处理事务."""
         self._transaction = False
         try:
             self._con.commit()
-        except self._failures as error:  # cannot commit
-            try:  # try to reopen the connection
+        except self._failures as error:  # 如果无法提交
+            try:  # 尝试重新打开连接
                 con = self._create()
             except Exception:
                 pass
             else:
                 self._close()
                 self._store(con)
-            raise error  # re-raise the original error
+            raise error  # 重新引发原始错误
 
     def rollback(self):
         """Rollback pending transaction."""
         self._transaction = False
         try:
             self._con.rollback()
-        except self._failures as error:  # cannot rollback
-            try:  # try to reopen the connection
+        except self._failures as error:  # 无法回滚
+            try:  # 尝试重新打开连接
                 con = self._create()
             except Exception:
                 pass
             else:
                 self._close()
                 self._store(con)
-            raise error  # re-raise the original error
+            raise error  # 重新引发原始错误
 
     def cancel(self):
-        """Cancel a long-running transaction.
+        """取消长时间运行的事务.
 
-        If the underlying driver supports this method, it will be called.
+        如果基础驱动程序支持此方法，则将调用.
         """
         self._transaction = False
         try:
@@ -372,29 +337,28 @@ class SteadyDBConnection:
             cancel()
 
     def ping(self, *args, **kwargs):
-        """Ping connection."""
+        """Ping 链接."""
         return self._con.ping(*args, **kwargs)
 
     def _cursor(self, *args, **kwargs):
-        """A "tough" version of the method cursor()."""
-        # The args and kwargs are not part of the standard,
-        # but some database modules seem to use these.
+        """一个强硬的cursor()方法. """
+        #  args and kwargs 不是标准的一部分, 但是一些数据库模块似乎使用这些。
         transaction = self._transaction
         if not transaction:
             self._ping_check(2)
         try:
-            # check whether the connection has been used too often
+            # 检查连接是否使用得太频繁
             if (self._maxusage and self._usage >= self._maxusage
                     and not transaction):
                 raise self._failure
-            cursor = self._con.cursor(*args, **kwargs)  # try to get a cursor
-        except self._failures as error:  # error in getting cursor
-            try:  # try to reopen the connection
+            cursor = self._con.cursor(*args, **kwargs)  # 尝试获取游标
+        except self._failures as error:  # 获取游标时出错
+            try:  # 尝试重新打开连接
                 con = self._create()
             except Exception:
                 pass
             else:
-                try:  # and try one more time to get a cursor
+                try:  # 并再尝试一次以获取光标
                     cursor = con.cursor(*args, **kwargs)
                 except Exception:
                     pass
@@ -402,7 +366,7 @@ class SteadyDBConnection:
                     self._close()
                     self._store(con)
                     if transaction:
-                        raise error  # re-raise the original error again
+                        raise error  # 再次引发原始错误
                     return cursor
                 try:
                     con.close()
@@ -410,18 +374,18 @@ class SteadyDBConnection:
                     pass
             if transaction:
                 self._transaction = False
-            raise error  # re-raise the original error again
+            raise error  # 再次引发原始错误
         return cursor
 
     def cursor(self, *args, **kwargs):
-        """Return a new Cursor Object using the connection."""
+        """使用连接返回新的游标对象."""
         return SteadyDBCursor(self, *args, **kwargs)
 
     def __del__(self):
         """Delete the steady connection."""
         try:
-            self._close()  # make sure the connection is closed
-        except:  # builtin Exceptions might not exist any more
+            self._close()  # 确保连接已关闭
+        except:  # 内置异常可能不再存在
             pass
 
 
@@ -430,10 +394,10 @@ class SteadyDBCursor:
 
     def __init__(self, con, *args, **kwargs):
         """Create a "tough" DB-API 2 cursor."""
-        # basic initialization to make finalizer work
+        # 基本初始化以使终结器工作
         self._cursor = None
         self._closed = True
-        # proper initialization of the cursor
+        # 正确初始化游标
         self._con = con
         self._args, self._kwargs = args, kwargs
         self._clearsizes()
@@ -444,36 +408,36 @@ class SteadyDBCursor:
         self._closed = False
 
     def __enter__(self):
-        """Enter the runtime context for the cursor object."""
+        """输入游标对象的运行时上下文."""
         return self
 
     def __exit__(self, *exc):
-        """Exit the runtime context for the cursor object."""
+        """退出游标对象的运行时上下文."""
         self.close()
 
     def __iter__(self):
-        """Make cursor compatible to the iteration protocol."""
+        """使游标与迭代协议兼容."""
         cursor = self._cursor
-        try:  # use iterator provided by original cursor
+        try:  # 使用原始游标提供的迭代器
             return iter(cursor)
-        except TypeError:  # create iterator if not provided
+        except TypeError:  # 创建迭代器（如果未提供）
             return iter(cursor.fetchone, None)
 
     def setinputsizes(self, sizes):
-        """Store input sizes in case cursor needs to be reopened."""
+        """存储输入大小，以防需要重新打开光标."""
         self._inputsizes = sizes
 
     def setoutputsize(self, size, column=None):
-        """Store output sizes in case cursor needs to be reopened."""
+        """存储输出大小，以防需要重新打开光标."""
         self._outputsizes[column] = size
 
     def _clearsizes(self):
-        """Clear stored input and output sizes."""
+        """清除存储的输入和输出大小."""
         self._inputsizes = []
         self._outputsizes = {}
 
     def _setsizes(self, cursor=None):
-        """Set stored input and output sizes for cursor execution."""
+        """设置存储的输入和输出大小以执行游标."""
         if cursor is None:
             cursor = self._cursor
         if self._inputsizes:
@@ -485,9 +449,8 @@ class SteadyDBCursor:
                 cursor.setoutputsize(size, column)
 
     def close(self):
-        """Close the tough cursor.
-
-        It will not complain if you close it more than once.
+        """关闭强硬光标.
+        如果您多次关闭它，它不会引起异常
         """
         if not self._closed:
             try:
@@ -497,7 +460,7 @@ class SteadyDBCursor:
             self._closed = True
 
     def _get_tough_method(self, name):
-        """Return a "tough" version of the given cursor method."""
+        """返回给定游标方法的“强硬”版本."""
         def tough_method(*args, **kwargs):
             execute = name.startswith('execute')
             con = self._con
@@ -505,25 +468,25 @@ class SteadyDBCursor:
             if not transaction:
                 con._ping_check(4)
             try:
-                # check whether the connection has been used too often
+                # 检查连接是否使用得太频繁
                 if (con._maxusage and con._usage >= con._maxusage
                         and not transaction):
                     raise con._failure
                 if execute:
                     self._setsizes()
                 method = getattr(self._cursor, name)
-                result = method(*args, **kwargs)  # try to execute
+                result = method(*args, **kwargs)  # 尝试执行
                 if execute:
                     self._clearsizes()
-            except con._failures as error:  # execution error
+            except con._failures as error:  # 执行错误
                 if not transaction:
                     try:
                         cursor2 = con._cursor(
-                            *self._args, **self._kwargs)  # open new cursor
+                            *self._args, **self._kwargs)  # 打开新游标
                     except Exception:
                         pass
                     else:
-                        try:  # and try one more time to execute
+                        try:  # 并再次尝试执行
                             if execute:
                                 self._setsizes(cursor2)
                             method = getattr(cursor2, name)
@@ -541,14 +504,14 @@ class SteadyDBCursor:
                             cursor2.close()
                         except Exception:
                             pass
-                try:  # try to reopen the connection
+                try:  # 尝试重新打开连接
                     con2 = con._create()
                 except Exception:
                     pass
                 else:
                     try:
                         cursor2 = con2.cursor(
-                            *self._args, **self._kwargs)  # open new cursor
+                            *self._args, **self._kwargs)  # 打开新游标
                     except Exception:
                         pass
                     else:
@@ -557,19 +520,19 @@ class SteadyDBCursor:
                             con._close()
                             con._store(con2)
                             self._cursor = cursor2
-                            raise error  # raise the original error again
+                            raise error  # 再次引发原始错误
                         error2 = None
-                        try:  # try one more time to execute
+                        try:  # 再试一次执行
                             if execute:
                                 self._setsizes(cursor2)
                             method2 = getattr(cursor2, name)
                             result = method2(*args, **kwargs)
                             if execute:
                                 self._clearsizes()
-                        except error.__class__:  # same execution error
+                        except error.__class__:  # 相同的执行错误
                             use2 = False
                             error2 = error
-                        except Exception as error:  # other execution errors
+                        except Exception as error:  # 其他执行错误
                             use2 = True
                             error2 = error
                         else:
@@ -581,7 +544,7 @@ class SteadyDBCursor:
                             self._cursor = cursor2
                             con._usage += 1
                             if error2:
-                                raise error2  # raise the other error
+                                raise error2  # 引发另一个错误
                             return result
                         try:
                             cursor2.close()
@@ -593,17 +556,17 @@ class SteadyDBCursor:
                         pass
                 if transaction:
                     self._transaction = False
-                raise error  # re-raise the original error again
+                raise error  # 再次引发原始错误
             else:
                 con._usage += 1
                 return result
         return tough_method
 
     def __getattr__(self, name):
-        """Inherit methods and attributes of underlying cursor."""
+        """继承基础游标的方法和属性."""
         if self._cursor:
             if name.startswith(('execute', 'call')):
-                # make execution methods "tough"
+                # 制作一个强硬的执行方法
                 return self._get_tough_method(name)
             return getattr(self._cursor, name)
         raise InvalidCursor
@@ -611,6 +574,6 @@ class SteadyDBCursor:
     def __del__(self):
         """Delete the steady cursor."""
         try:
-            self.close()  # make sure the cursor is closed
-        except:  # builtin Exceptions might not exist any more
+            self.close()  # 确保光标已关闭
+        except:  # 内置异常可能不再存在
             pass

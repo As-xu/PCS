@@ -1,14 +1,12 @@
 from pcs.base import base_bp
-from pcs.base.base_model import BaseModel
 from pcs.extensions.db_link_extension.pooled_db import PooledDB
-import psycopg2
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
-import os
 import logging
 import logging.handlers
-
-
+import psycopg2
+import os
+import json
 
 logger = logging.getLogger(__name__)
 jwt = JWTManager()
@@ -17,10 +15,8 @@ jwt = JWTManager()
 class Initializer:
     def __init__(self, app):
         super().__init__()
-
         self.pcs_app = app
-        self.config = app.config
-        self.manifest = {}
+        self.pcs_app.db_pool = {}
 
     @property
     def flask_app(self):
@@ -45,9 +41,35 @@ class Initializer:
         self.pcs_app.register_blueprint(base_bp)
 
     def init_db(self):
-        self.pcs_app.db = PooledDB(
-            creator=psycopg2
-        )
+        config = self.pcs_app.config
+        db_conf_path = config.get("DB_CONF_PATH") or ""
+        try:
+            with open(db_conf_path, "r") as f:
+                db_conf = json.load(f)
+        except Exception as e:
+            raise "读取数据库配置失败: %s" % str(e)
+
+        if "main" not in db_conf.keys():
+            raise "未配置main数据库"
+
+        for name, conf in db_conf.items():
+            db_type = conf.pop("db_type", None)
+            is_use = conf.pop("is_use", None)
+            if not is_use:
+                continue
+
+            if db_type == "postgresql":
+                creator = psycopg2
+                self.pcs_app.db_pool[name] = PooledDB(
+                    creator=creator,
+                    **conf
+                )
+            # elif db_type == "mysql":
+            #     creator = pymysql
+            # elif db_type == "redis":
+            #     creator = redis
+            else:
+                continue
 
     def config_jwt(self):
         jwt.init_app(self.pcs_app)

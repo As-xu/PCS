@@ -18,3 +18,7 @@ class LoggingCursor(psycopg2.extensions.cursor):
             logger.error("%s: %s" % (exc.__class__.__name__, exc))
             raise
 
+
+class DBPool(dict):
+    def __init__(self, *args, **kwargs):
+        super(DBPool, self).__init__(*args, **kwargs)

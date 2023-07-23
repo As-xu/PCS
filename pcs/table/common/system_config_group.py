@@ -1,6 +1,6 @@
-from pcs.base.base_model import BaseModel
+from pcs.base.base_table import BaseTable
 
 
-class SystemConfigGroupModel(BaseModel):
-    __tablename__ = "system_config_group_list"
+class SystemConfigGroupTable(BaseTable):
+    __table_name = "system_config_group_list"
 

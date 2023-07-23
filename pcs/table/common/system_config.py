@@ -1,10 +1,9 @@
-from pcs.base.base_model import BaseModel
+from pcs.base.base_table import BaseTable
 
 
-class SystemConfigModel(BaseModel):
-    __tablename__ = "system_config_list"
+class SystemConfigTable(BaseTable):
+    __table_name = "system_config_list"
 
-    pass
 
 
 

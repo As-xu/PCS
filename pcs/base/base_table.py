@@ -12,27 +12,32 @@ class TableInfo:
 
 class Tables:
     def __init__(self):
-        self.__tables = []
+        self.__tables = {}
 
     @property
     def tables(self):
         return self.__tables
 
-    def add_table(self, table):
-        if isinstance(table, BaseTable):
-            raise Exception("%s: 不是一个Table对象" % str(table))
+    def add_table(self, table_class):
+        if not issubclass(table_class, BaseTable):
+            raise Exception("%s: 不是一个Table 类" % str(table_class))
 
-        if table in self.__tables:
+        if self.exists_table(table_class.__name__):
             return None
 
-        self.__tables.append(table)
-        self.__setattr__(table.__name__, TableInfo(table))
+        self.__tables[table_class.__name__] = table_class
 
     def exists_table(self, table_name):
-        if hasattr(self, table_name):
+        if table_name in self.__tables.keys():
             return True
 
         return False
+
+    def get_table(self, table_name):
+        if not self.exists_table(table_name):
+            raise Exception("不存在此Table" % table_name)
+
+        return self.__tables.get(table_name)
 
 
 class BaseTable(object):

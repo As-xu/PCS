@@ -1,5 +1,5 @@
 from pcs.base import base_bp
-from pcs.base.base_model import BaseModel
+from pcs.base.base_table import BaseTable
 from pcs.extensions.db_link_extension.pooled_db import PooledDB
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
@@ -76,18 +76,14 @@ class Initializer:
                 continue
 
     def init_table(self):
-        pcs_module = sys.modules.get("pcs.model")
-
-        tables = self.pcs_app.tables
+        pcs_module = sys.modules.get("pcs.table")
         for key, module in pcs_module.__dict__.items():
             if not isinstance(module, type):
                 continue
 
-            if issubclass(module, BaseModel):
-                tables.append(module)
+            if issubclass(module, BaseTable):
+                self.pcs_app.add_table(module)
 
-            if module:
-                pass
 
     def init_jwt(self):
         jwt.init_app(self.pcs_app)

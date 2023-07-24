@@ -1,3 +1,3 @@
-from .user import UserModel
-from .user_log import UserLogModel
-from .user_login import UserLoginModel
+from .user import UserTable
+from .user_log import UserLogTable
+from .user_login import UserLoginTable

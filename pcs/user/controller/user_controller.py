@@ -1,7 +1,6 @@
 from pcs.base.base_controller import BaseController
 from flask_jwt_extended import create_access_token
 from flask import current_app, jsonify
-from pcs.user.model.user_model import UserModel
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +13,7 @@ class UserController(BaseController):
     def user_login(self, request_data):
         username = request_data.get("user_name")
         password = request_data.get("password")
-        UserModel.search()
+        user_table = current_app.gto("user")
         access_token = create_access_token(identity=username)
         return jsonify(access_token=access_token)
 

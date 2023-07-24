@@ -20,3 +20,13 @@ class BaseFlaskApp(Flask):
     @property
     def db_pool(self):
         return self.__db_pool
+
+    def get_table_obj(self, table_name):
+        table_class = self.__tables.get_table(table_name)
+        return table_class()
+
+    def gto(self, table_name):
+        return self.get_table_obj(table_name)
+
+    def add_table(self, table_class):
+        self.__tables.add_table(table_class)

@@ -1,2 +1,0 @@
-from pcs.common.model.system_config_group_model import SystemConfigGroupModel
-from pcs.common.model.system_config_model import SystemConfigModel

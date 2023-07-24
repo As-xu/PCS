@@ -93,7 +93,7 @@ class Initializer:
         jwt.init_app(self.pcs_app)
 
     def init_log(self):
-        from pcs.common.LoggingConfig import PCSFormatter
+        from pcs.common.logging_config import PCSFormatter
 
         log_file = self.pcs_app.config['LOG_FILE_NAME']
         log_dir = self.pcs_app.config['LOG_DIR']
@@ -133,7 +133,7 @@ class Initializer:
         logging.getLogger().setLevel(logging.INFO)
 
     def init_hook(self):
-        from pcs.common.Hook import Hook
+        from pcs.common.hook import Hook
         # 在处理第一个请求前执行
         self.pcs_app.before_first_request(Hook.handle_before_first_request)
         # 在每次请求前执行

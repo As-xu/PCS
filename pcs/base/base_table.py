@@ -13,23 +13,20 @@ class TableInfo:
 class Tables:
     def __init__(self):
         self.__tables = []
+        self.__tables_mapping = {}
 
-    @property
-    def tables(self):
-        return self.__tables
+    def add_table(self, table_class):
+        if isinstance(table_class, BaseTable):
+            raise Exception("%s: 不是一个Table对象" % str(table_class))
 
-    def add_table(self, table):
-        if isinstance(table, BaseTable):
-            raise Exception("%s: 不是一个Table对象" % str(table))
-
-        if table in self.__tables:
+        if self.exists_table(table_class.__name__):
             return None
 
-        self.__tables.append(table)
-        self.__setattr__(table.__name__, TableInfo(table))
+        self.__tables.append(table_class)
+        self.__tables_mapping[table_class.__name__] = table_class
 
     def exists_table(self, table_name):
-        if hasattr(self, table_name):
+        if table_name in self.__tables_mapping.keys():
             return True
 
         return False

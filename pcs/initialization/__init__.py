@@ -78,16 +78,12 @@ class Initializer:
     def init_table(self):
         pcs_module = sys.modules.get("pcs.model")
 
-        tables = self.pcs_app.tables
-        for key, module in pcs_module.__dict__.items():
-            if not isinstance(module, type):
+        for key, class_module in pcs_module.__dict__.items():
+            if not isinstance(class_module, type):
                 continue
 
-            if issubclass(module, BaseModel):
-                tables.append(module)
-
-            if module:
-                pass
+            if issubclass(class_module, BaseModel):
+                self.pcs_app.add_table(class_module)
 
     def init_jwt(self):
         jwt.init_app(self.pcs_app)

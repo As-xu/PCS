@@ -1,8 +1,8 @@
-from pcs.base.base_table import BaseTable
+from pcs.common.base import BaseTable
 
 
 class SystemConfigTable(BaseTable):
-    __table_name = "system_config_list"
+    table_name = "system_config_list"
 
 
 

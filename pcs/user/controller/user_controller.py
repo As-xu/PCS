@@ -1,4 +1,4 @@
-from pcs.base.base_controller import BaseController
+from pcs.common.base import BaseController
 from flask_jwt_extended import create_access_token
 from flask import current_app, jsonify
 from pcs.common.sql_condition import Sc

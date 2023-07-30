@@ -1,8 +1,8 @@
-from pcs.base.base_table import BaseTable
+from pcs.common.base import BaseTable
 
 
 class UserLogTable(BaseTable):
-    __table_name = 'user_log_list'
+    table_name = 'user_log_list'
 
 
 

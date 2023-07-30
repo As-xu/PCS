@@ -49,58 +49,57 @@ class Tables:
 
 
 class BaseTable(object):
-    __db_name = None
-    __db_type = None
-    __table_name = None
+    db_name = None
+    db_type = None
+    table_name = None
 
     def __init__(self, cur):
         self.cur = cur
         self.exec_state = ExecuteState()
 
-    @classmethod
-    @property
-    def table_name(cls):
-        return cls.__table_name
-
-    @classmethod
-    @property
-    def db_type(cls):
-        return cls.__db_type
-
-    @classmethod
-    def set_db_type(cls, value):
-        cls.__db_type = value
-
-    @classmethod
-    @property
-    def db_name(cls):
-        return cls.__db_name
-
-    @classmethod
-    def set_db_name(cls, value):
-        cls.__db_name = value
+    # @property
+    # def table_name(self):
+    #     return self.__class__.__table_name
+    #
+    # @classmethod
+    # @property
+    # def db_type(cls):
+    #     return cls.__db_type
+    #
+    # @classmethod
+    # def set_db_type(cls, value):
+    #     cls.__db_type = value
+    #
+    # @classmethod
+    # @property
+    # def db_name(cls):
+    #     return cls.__db_name
+    #
+    # @classmethod
+    # def set_db_name(cls, value):
+    #     cls.__db_name = value
 
     @property
     def field_symbol(self):
-        if self.__db_type == 'postgresql':
+        if self.db_type == 'postgresql':
             return '"'
         return ''
 
     @property
     def like_operate(self):
-        if self.__db_type == 'postgresql':
+        if self.db_type == 'postgresql':
             return 'ilike'
         return 'like'
 
     @property
     def regex_operate(self):
-        if self.__db_type == 'postgresql':
+        if self.db_type == 'postgresql':
             return 'regexp'
         return '~'
 
     @property
     def not_regex_operate(self):
-        if self.__db_type == 'regexp':
+        if self.db_type == 'regexp':
             return 'not regexp'
         return '!~'
 
@@ -277,7 +276,7 @@ class BaseTable(object):
                     operate_str = operate
                     sql_condition_value_list.append(value)
 
-                fields_sql_list.append(" {0} {1} %%s ".format(field_str, operate_str))
+                fields_sql_list.append(" {0} {1} %s ".format(field_str, operate_str))
 
             if operate_or_count > 0 and operate_or_used_count == 0:
                 sql_condition = " And (("
@@ -339,16 +338,15 @@ class BaseTable(object):
 
         return result
 
-    @reset_state
     def __execute(self, sql_str, params=None, fetch_type=None):
         try:
             self.cur.execute(sql_str, params=params)
             rows = self.cur.fetchall()
         except PgError as e:
-            self.exec_state.failure('DB执行SQL失败{0}'.format(str(e)))
+            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
             return None
         except Exception as e:
-            self.exec_state.failure('执行SQL失败')
+            self.exec_state.failure("执行SQL失败'{0}'".format(str(e)))
             return None
 
         return rows

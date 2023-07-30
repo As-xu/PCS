@@ -4,7 +4,7 @@ logger = logging.getLogger('pcs')
 
 from pcs.initialization import Initializer
 from pcs.utils.config_parse import parse_config
-from pcs.base.base_flask_app import BaseFlaskApp
+from pcs.common.base import BaseFlaskApp
 
 
 def create_app():

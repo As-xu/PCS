@@ -1,4 +1,4 @@
-from pcs.base.base_enum import BaseEnum, unique
+from pcs.common.base.base_enum import BaseEnum, unique
 
 
 @unique

@@ -1,5 +1,5 @@
-from pcs.base import base_bp
-from pcs.base.base_table import BaseTable
+from pcs.common.base import base_bp
+from pcs.common.base import BaseTable
 from pcs.extensions.db_link_extension.pooled_db import PooledDB
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
@@ -83,13 +83,15 @@ class Initializer:
 
             if issubclass(module, BaseTable):
                 if not module.db_name:
-                    module.set_db_name('main')
+                    # module.set_db_name('main')
+                    module.db_name = 'main'
 
                 conf = self.pcs_app.dbs_conf.get(module.db_name)
                 if not conf:
                     raise "未配置[%s]数据库" % module.db_name
 
-                module.set_db_type(conf.get("db_type"))
+                # module.set_db_type(conf.get("db_type"))
+                module.db_type = conf.get("db_type")
                 self.pcs_app.add_table(module)
 
 

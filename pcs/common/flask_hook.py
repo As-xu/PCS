@@ -1,4 +1,4 @@
-from flask import request
+from flask import request, current_app
 import logging
 
 logger = logging.getLogger(__name__)

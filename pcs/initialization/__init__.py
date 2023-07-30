@@ -8,7 +8,6 @@ import logging.handlers
 import psycopg2
 import os
 import sys
-import importlib
 import json
 
 logger = logging.getLogger(__name__)
@@ -62,6 +61,7 @@ class Initializer:
             if not is_use:
                 continue
 
+            self.pcs_app.dbs_conf[name] = conf
             if db_type == "postgresql":
                 creator = psycopg2
                 db_pool[name] = PooledDB(
@@ -82,6 +82,14 @@ class Initializer:
                 continue
 
             if issubclass(module, BaseTable):
+                if not module.db_name:
+                    module.set_db_name('main')
+
+                conf = self.pcs_app.dbs_conf.get(module.db_name)
+                if not conf:
+                    raise "未配置[%s]数据库" % module.db_name
+
+                module.set_db_type(conf.get("db_type"))
                 self.pcs_app.add_table(module)
 
 
@@ -89,7 +97,7 @@ class Initializer:
         jwt.init_app(self.pcs_app)
 
     def init_log(self):
-        from pcs.common.logging_config import PCSFormatter
+        from pcs.common.log import PCSFormatter
 
         log_file = self.pcs_app.config['LOG_FILE_NAME']
         log_dir = self.pcs_app.config['LOG_DIR']
@@ -129,7 +137,7 @@ class Initializer:
         logging.getLogger().setLevel(logging.INFO)
 
     def init_hook(self):
-        from pcs.common.hook import Hook
+        from pcs.common.flask_hook import Hook
         # 在处理第一个请求前执行
         self.pcs_app.before_first_request(Hook.handle_before_first_request)
         # 在每次请求前执行

@@ -11,6 +11,7 @@ class BaseFlaskApp(Flask):
     def __init__(self, *args, **kwargs):
         self.__tables = Tables()
         self.__db_pool = DBPool()
+        self.dbs_conf = {}
         super(BaseFlaskApp, self).__init__(*args, **kwargs)
 
     @property
@@ -21,12 +22,19 @@ class BaseFlaskApp(Flask):
     def db_pool(self):
         return self.__db_pool
 
-    def get_table_obj(self, table_name):
-        table_class = self.__tables.get_table(table_name)
-        return table_class()
-
-    def gto(self, table_name):
-        return self.get_table_obj(table_name)
+    def get_table_obj(self, table_name, conn):
+        return self.__tables.get_table(table_name, conn)
 
     def add_table(self, table_class):
         self.__tables.add_table(table_class)
+
+    def get_db_connect(self, db_name=None):
+        if not db_name:
+            pool = self.__db_pool['main']
+        else:
+            if self.__db_pool.exists_pool(db_name):
+                pool = self.__db_pool[db_name]
+            else:
+                return False
+
+        return pool.connection()

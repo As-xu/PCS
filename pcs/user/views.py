@@ -8,12 +8,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
 @user_bp.route('/login', methods=["POST", "GET"])
 def user_login():
     json_data = request.json
-    controller = UserController(request)
-    return controller.user_login(json_data)
+    if request.method == 'POST':
+        return render_template('login.html')
+    else:
+        controller = UserController(request)
+        return controller.user_login(json_data)
 
 
 @user_bp.route('/logout', methods=["POST", "GET"])

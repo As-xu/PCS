@@ -340,7 +340,7 @@ class BaseTable(object):
 
     def __execute(self, sql_str, params=None, fetch_type=None):
         try:
-            self.cur.execute(sql_str, params=params)
+            self.cur.execute(sql_str, params)
             rows = self.cur.fetchall()
         except PgError as e:
             self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))

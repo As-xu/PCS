@@ -24,10 +24,10 @@ class Initializer:
         return self.pcs_app
 
     def pre_init(self):
-        pass
+        logger.info("开始初始化")
 
     def post_init(self):
-        pass
+        logger.info("初始化成功")
 
     def init_app(self):
         self.pre_init()
@@ -64,16 +64,20 @@ class Initializer:
             self.pcs_app.dbs_conf[name] = conf
             if db_type == "postgresql":
                 creator = psycopg2
-                db_pool[name] = PooledDB(
-                    creator=creator,
-                    **conf
-                )
+
+                try:
+                    db_pool[name] = PooledDB(creator=creator, **conf)
+                except Exception as e:
+                    logger.error("连接数据库失败'{0}'".format(str(e)))
+                    raise Exception("连接数据库失败'{0}'".format(str(e)))
             # elif db_type == "mysql":
             #     creator = pymysql
             # elif db_type == "redis":
             #     creator = redis
             else:
                 continue
+        logger.info("连接数据库成功")
+        return None
 
     def init_table(self):
         pcs_module = sys.modules.get("pcs.table")
@@ -137,6 +141,7 @@ class Initializer:
         handler.setLevel(log_level)
         logging.getLogger().addHandler(handler)
         logging.getLogger().setLevel(logging.INFO)
+        logging.info('PCS Ready Start')
 
     def init_hook(self):
         from pcs.common.flask_hook import Hook

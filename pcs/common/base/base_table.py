@@ -1,7 +1,9 @@
-from pcs.common.enum.system_enum import DBResultState
+from pcs.common.enum.system_enum import DBResultState, DBType
 from psycopg2.errors import Error as PgError
 from pcs.common.sql_operator import *
 import logging
+import datetime
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -52,48 +54,30 @@ class BaseTable(object):
     db_name = None
     db_type = None
     table_name = None
+    default_value = {}
+    log_field = True
+    primary_keys = ("id", )
 
-    def __init__(self, cur):
+    def __init__(self, cur, user_id=None):
         self.cur = cur
+        self.user_id = user_id
         self.exec_state = ExecuteState()
-
-    # @property
-    # def table_name(self):
-    #     return self.__class__.__table_name
-    #
-    # @classmethod
-    # @property
-    # def db_type(cls):
-    #     return cls.__db_type
-    #
-    # @classmethod
-    # def set_db_type(cls, value):
-    #     cls.__db_type = value
-    #
-    # @classmethod
-    # @property
-    # def db_name(cls):
-    #     return cls.__db_name
-    #
-    # @classmethod
-    # def set_db_name(cls, value):
-    #     cls.__db_name = value
 
     @property
     def field_symbol(self):
-        if self.db_type == 'postgresql':
+        if self.db_type == DBType.Postgresql.value:
             return '"'
         return ''
 
     @property
     def like_operate(self):
-        if self.db_type == 'postgresql':
+        if self.db_type == DBType.Postgresql.value:
             return 'ilike'
         return 'like'
 
     @property
     def regex_operate(self):
-        if self.db_type == 'postgresql':
+        if self.db_type == DBType.Postgresql.value:
             return 'regexp'
         return '~'
 
@@ -103,9 +87,6 @@ class BaseTable(object):
             return 'not regexp'
         return '!~'
 
-    def _get_permissions_condition(self):
-        return True, []
-
     def query(self, sc, fields=None, offset=None, limit=None, order_by=None, count=None, distinct=None):
         sql_str, params = self._generate_query_sql(sc, fields=fields, offset=offset, limit=limit,
                                                    order_by=order_by, count=count, distinct=distinct)
@@ -114,6 +95,37 @@ class BaseTable(object):
             return None
 
         return self._query(sql_str, params=params)
+
+    def _query(self, sql_str, params=None):
+        rows = self.__execute(sql_str, params)
+        return rows
+
+    def create(self, insert_data):
+        insert_sql, params = self._generate_insert_sql(insert_data)
+
+        if not insert_sql:
+            self.exec_state.failure('生成SQL失败')
+            return None
+
+        return self._create(insert_sql, params=params)
+
+    def _create(self, sql_str, params=None):
+        return self.__execute(sql_str, params)
+
+    def delete(self):
+        return None
+
+    def batch_create(self):
+        return None
+
+    def update(self):
+        return None
+
+    def _write(self):
+        return None
+
+    def _get_permissions_condition(self):
+        return True, []
 
     def _generate_query_field_sql(self, fields=None, distinct=False):
         if not fields:
@@ -311,9 +323,6 @@ class BaseTable(object):
 
         return condition_sql, paras
 
-    def _query(self, sql_str, params=None):
-        rows = self.__execute(sql_str, params)
-        return rows
 
     def paginate_query(self, condition, page_index=1, page_size=20, fields=None, order_by=None):
         sql_str, params = self._generate_query_sql(condition, fields=fields, order_by=order_by)
@@ -351,73 +360,107 @@ class BaseTable(object):
 
         return rows
 
-    def delete(self):
-        return None
+    def get_tables_info(self, table_names):
+        select_sql = """
+           select col.table_schema schema_name,
+                  col.table_name,
+                  col.column_name,
+                  col.is_nullable,
+                  col.data_type col_type,
+                  col.udt_name,
+                  pc.oid, 
+                  col.ordinal_position,
+                  COALESCE((SELECT col.ordinal_position = ANY ( conkey ) 
+                              FROM pg_constraint 
+                             WHERE contype = 'p' AND conrelid = pc.oid 
+                             ), FALSE ) is_primarykey,
+                  col_description(pc.oid, col.ordinal_position) column_comment
+             from information_schema.columns col
+        left join pg_namespace ns on ns.nspname = col.table_schema
+        left join pg_class pc on col.table_name = pc.relname and pc.relnamespace = ns.oid 
+            where col.table_name in %s
+            order by col.table_schema, col.table_name, col.ordinal_position
+        """
+        return self._query(select_sql, (table_names, ))
 
-    def batch_create(self):
-        return None
+    def get_self_table_info(self):
+        return self.get_tables_info([self.table_name])
 
-    def update(self):
-        return None
+    def _generate_insert_sql(self, insert_data):
+        insert_fields = []
+        insert_paras = []
+        parameter_list = []
 
-    def _write(self):
-        return None
+        self.__remove_extra_field(insert_data)
+        self.__add_extra_value(insert_data)
 
-    # def _generate_insert_sql(self, field_default_value_dict={}):
-    #     parameter_list = []
-    #     insert_sql = 'Insert Into %s%s%s (%s' % (self.__join_char, self._table_name, self.__join_char, self.__join_char)
-    #     insert_sql_name = []
-    #     insert_sql_paras = []
-    #
-    #     if Global.SAVE_FLAG_NAME in field_default_value_dict.keys():
-    #         field_default_value_dict.pop(Global.SAVE_FLAG_NAME)
-    #
-    #     if self.__exists_log_field:
-    #         field_default_value_dict.update({'write_date': datetime.datetime.utcnow()})
-    #         field_default_value_dict.update({'write_uid': self.user_id})
-    #         field_default_value_dict.update({'create_date': datetime.datetime.utcnow()})
-    #         field_default_value_dict.update({'create_uid': self.user_id})
-    #
-    #     if self.__odoo_table and self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         insert_sql_name.append(self._primary_key_list[0])
-    #         insert_sql_paras.append("nextval('%s_id_seq')" % self._table_name)
-    #
-    #     for key in field_default_value_dict.keys():
-    #         insert_sql_name.append(key)
-    #         insert_sql_paras.append('%s')
-    #
-    #         field_value = field_default_value_dict[key]
-    #         if isinstance(field_value, dict):
-    #             field_value = json.dumps(field_value)
-    #
-    #         parameter_list.append(field_value)
-    #
-    #     if not insert_sql_name:
-    #         return False, False
-    #
-    #     insert_sql_name = str.join('%s,%s' % (self.__join_char, self.__join_char), insert_sql_name)
-    #     insert_sql = insert_sql + insert_sql_name + '%s) values (' % self.__join_char + str.join(',', insert_sql_paras) + ')'
-    #
-    #     if self._primary_key_list and self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         return_sql = ' returning "%s"' % str.join('","', self._primary_key_list)
-    #
-    #         insert_sql += return_sql
-    #
-    #     return insert_sql, parameter_list
-    #
-    # def __add_extra_value(self, field_value_dict):
-    #     field_value_dict.pop(Global.SAVE_FLAG_NAME, None)
-    #
-    #     if self.__exists_log_field:
-    #         field_value_dict.update({
-    #             'write_date': datetime.datetime.utcnow(),
-    #             'write_uid': self.user_id,
-    #             'create_date': datetime.datetime.utcnow(),
-    #             'create_uid': self.user_id,
-    #         })
-    #
-    #     return field_value_dict
-    #
+        if self.db_type == DBType.Postgresql.value and self.primary_keys:
+            insert_fields.append(self.primary_keys[0])
+            insert_paras.append("nextval('%s_id_seq')" % self.table_name)
+
+        for key in insert_data.keys():
+            insert_fields.append(key)
+            insert_paras.append('%s')
+
+            field_value = insert_data[key]
+            if isinstance(field_value, (dict, list)):
+                field_value = json.dumps(field_value)
+
+            parameter_list.append(field_value)
+
+        if not insert_fields:
+            return False, False
+
+        fields_sql = ",".join("{0}{1}{0}".format(self.field_symbol, field) for field in insert_fields)
+        params_sql = ",".join(insert_paras)
+        return_sql = ""
+        if self.primary_keys and self.db_type == DBType.Postgresql.value:
+            return_sql = ' Returning "%s" ' % '","'.join(self.primary_keys)
+
+        insert_sql = """
+            Insert Into {field_symbol}{table_name}{field_symbol} (
+                {fields_sql}
+            )
+            Values(
+                {params_sql}
+            )
+            {return_sql}
+        """.format(
+            field_symbol=self.field_symbol,
+            table_name=self.table_name,
+            fields_sql=fields_sql,
+            params_sql=params_sql,
+            return_sql=return_sql,
+        )
+
+        return insert_sql, parameter_list
+
+    def __add_extra_value(self, value_dict, mode='create'):
+        if mode == 'create':
+            if self.log_field:
+                value_dict.update({
+                    'write_date': datetime.datetime.utcnow(),
+                    'write_uid': self.user_id,
+                    'create_date': datetime.datetime.utcnow(),
+                    'create_uid': self.user_id,
+                })
+
+            for key in self.default_value.keys():
+                if key in value_dict.keys():
+                    continue
+
+                value_dict[key] = self.default_value[key]
+        elif mode == 'update':
+            if self.log_field:
+                value_dict.update({
+                    'write_date': datetime.datetime.utcnow(),
+                    'write_uid': self.user_id,
+                })
+
+    def __remove_extra_field(self, value_dict):
+        value_dict.pop("save_flag", None)
+
+
     # def _generate_batch_insert_sql(self, values_iter):
     #     insert_sql = 'Insert Into %s%s%s (' % (self.__join_char, self._table_name, self.__join_char,)
     #
@@ -739,43 +782,7 @@ class BaseTable(object):
     #
     #     return where_sql, where_sql_parameter_list
     #
-    # def create(self, insert_dict={}):
-    #     need_save_dict = {}
-    #     for key in insert_dict.keys():
-    #         if key == "user_browser_tz":
-    #             continue
-    #
-    #         need_save_dict.update({key: insert_dict[key]})
-    #
-    #     for key2 in self._add_initial_data.keys():
-    #         if key2 in insert_dict.keys():
-    #             continue
-    #
-    #         need_save_dict.update({key2: self._add_initial_data[key2]})
-    #
-    #     insert_sql, parameter_list = self._generate_insert_sql(need_save_dict)
-    #
-    #     if not insert_sql:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'generate insert sql error'
-    #         return False
-    #
-    #     result = self._create(insert_sql, paras=parameter_list)
-    #     if self.error_code == Global.response_error_code:
-    #         return result
-    #
-    #     if self._psqlOperate.db_type == DBTypeEnum.MySQLDB.value[0]:
-    #         return_sql = 'SELECT LAST_INSERT_ID() as last_id'
-    #         result = self._query(return_sql)
-    #         if self.error_code == Global.response_error_code:
-    #             return result
-    #
-    #         if self.__result_is_dict:
-    #             result = result[0].get("last_id")
-    #         else:
-    #             result = result[0].last_id
-    #
-    #     return result
+
     #
     # def __initial_add_data(self, value_data):
     #     value_data.pop("user_browser_tz", None)
@@ -1225,17 +1232,6 @@ class BaseTable(object):
     #
     #     return True
     #
-    # def search(self, domain, query_name_list=None, show_name_list=None, offset=None, limit=None, order_by=None,
-    #           count=False, group_by=None, distinct_search=False):
-    #     query_condition = SQC.qc(domain)
-    #     if isinstance(query_condition, type(None)):
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = "domain type error[tuple or list]."
-    #         return []
-    #
-    #     return self.query(query_condition, query_name_list=query_name_list, show_name_list=show_name_list,
-    #                       offset=offset, limit=limit, order_by=order_by, count=count, group_by=group_by,
-    #                       distinct_search=distinct_search)
 
 
 class ExecuteState:

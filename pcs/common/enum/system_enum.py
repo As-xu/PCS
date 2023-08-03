@@ -13,3 +13,11 @@ class ResponseState(BaseEnum):
     SUCCESS = 100
     WARNING = 200
     FAILURE = 300
+
+
+
+@unique
+class DBType(BaseEnum):
+    Postgresql = 'postgresql'
+    MySql = 'mysql'
+    Redis = 'redis'

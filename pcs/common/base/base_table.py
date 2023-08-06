@@ -1,18 +1,13 @@
 from pcs.common.enum.system_enum import DBResultState, DBType, DBExecMode
 from psycopg2.errors import Error as PgError
+from psycopg2 import extensions
+from psycopg2 import extras
 from pcs.common.sql_operator import *
 import logging
 import datetime
 import json
 
 logger = logging.getLogger(__name__)
-
-
-def reset_state(func):
-    def reset(*args, **kwargs):
-        return func(*args, **kwargs)
-
-    return reset
 
 
 class TableInfo:
@@ -108,10 +103,10 @@ class BaseTable(object):
         return self.exec_state.error_msg
 
     def get_table_name_sql(self):
-        return ' {0}{1}{0} '.format(self.field_symbol, self.table_name)
+        return '{0}{1}{0}'.format(self.field_symbol, self.table_name)
 
     def get_table_field_sql(self, field):
-        return ' {0}{1}{0} '.format(self.field_symbol, field)
+        return '{0}{1}{0}'.format(self.field_symbol, field)
 
     def get_tables_info(self, table_names):
         select_sql = """
@@ -190,7 +185,7 @@ class BaseTable(object):
 
         return row_count, self.__execute(query_sql, params=params)
 
-    def create(self, insert_data):
+    def create(self, insert_data, return_fields=None):
         if not insert_data:
             self.exec_state.failure("创建内容为空")
             return None
@@ -203,7 +198,7 @@ class BaseTable(object):
 
         return self._create(insert_sql, params=params)
 
-    def create_no_log(self, insert_data):
+    def create_no_log(self, insert_data, return_fields=None):
         old_log_field, self.__log_field = self.__log_field, False
         result = self.create(insert_data)
         self.__log_field = old_log_field
@@ -212,7 +207,7 @@ class BaseTable(object):
     def _create(self, sql_str, params=None):
         return self.__execute(sql_str, params=params, mode=DBExecMode.INSERT.name)
 
-    def batch_create(self, insert_data_list=None, page_size=1000, fetch=False):
+    def batch_create(self, insert_data_list=None, page_size=1000, fetch=False, return_fields=None):
         if not insert_data_list:
             return True
 
@@ -233,13 +228,14 @@ class BaseTable(object):
         return self._batch_create(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch)
 
     def _batch_create(self, insert_sql, params=None, template=None, page_size=1000, fetch=True):
-        rowcount = self.__execute(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch)
-        if not rowcount:
+        result = self.__execute(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch,
+                                mode=DBExecMode.BATCH_INSERT.name)
+        if not result:
             self.exec_state.no_change("未创建任何内容")
 
-        return True
+        return result
 
-    def delete(self, condition):
+    def delete(self, condition, return_fields=None):
         if not condition:
             self.exec_state.failure("未设定删除条件")
             return None
@@ -259,7 +255,7 @@ class BaseTable(object):
 
         return None
 
-    def write(self, update_dict, condition):
+    def write(self, update_dict, condition, return_fields=None):
         if not update_dict:
             self.exec_state.failure("更新内容为空")
             return None
@@ -282,37 +278,10 @@ class BaseTable(object):
 
         return None
 
-    def __execute(self, sql_str, params=None, mode=DBExecMode.QUERY.name, **kwargs):
-        result = None
-        self.exec_state.reset_state()
-        try:
-            if mode == DBExecMode.BATCH_UPDATE.name:
-                pass
-            elif mode == DBExecMode.BATCH_INSERT.name:
-                pass
-
-            self.cur.execute(sql_str, params)
-            if mode == DBExecMode.QUERY.name:
-                result = self.cur.fetchall()
-            elif mode == DBExecMode.UPDATE.name:
-                result = self.cur.rowcount
-            elif mode == DBExecMode.INSERT.name:
-                result = self.cur.fetchone()
-            elif mode == DBExecMode.DELETE.name:
-                result = self.cur.rowcount
-        except PgError as e:
-            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
-        except Exception as e:
-            self.exec_state.failure("执行失败'{0}'".format(str(e)))
-
-        return result
-
-    def mogrify(self, sql_str, params=None):
-        return self.cur.mogrify(sql_str, params)
-
     def batch_write(self, update_data_list, condition_keys=None, data_keys=None, page_size=1000, fetch=False,
-                    field_type=None):
+                    field_type=None, return_fields=None):
         """
+        :param return_fields:
         :param data_keys:
         :param condition_keys:
         :param update_data_list:
@@ -348,11 +317,43 @@ class BaseTable(object):
         return self._batch_write(update_sql, params=params, template=template, page_size=page_size, fetch=fetch)
 
     def _batch_write(self, update_sql, params=None, template=None, page_size=1000, fetch=True):
-        rowcount = self.__execute(update_sql, params=params, template=template, page_size=page_size, fetch=fetch)
-        if not rowcount:
+        result = self.__execute(update_sql, params=params, template=template, page_size=page_size, fetch=fetch,
+                                mode=DBExecMode.BATCH_INSERT.name)
+        if not result:
             self.exec_state.no_change("未更新任何内容")
 
-        return True
+        return result
+
+    def __execute(self, sql_str, params=None, mode=DBExecMode.QUERY.name, template=None, page_size=None, fetch=None):
+        result = None
+        self.exec_state.reset_state()
+        try:
+            if mode in (DBExecMode.BATCH_UPDATE.name, DBExecMode.BATCH_INSERT.name):
+                if not isinstance(template, bytes) and template is not None:
+                    template = template.encode(extensions.encodings[self.cur.connection.encoding])
+                result = extras.execute_values(self.cur, sql_str, params, template=template, page_size=page_size,
+                                               fetch=fetch)
+                if not fetch:
+                    result = self.cur.rowcount
+            else:
+                self.cur.execute(sql_str, params)
+                if mode == DBExecMode.QUERY.name:
+                    result = self.cur.fetchall()
+                elif mode == DBExecMode.UPDATE.name:
+                    result = self.cur.rowcount
+                elif mode == DBExecMode.INSERT.name:
+                    result = self.cur.fetchone()
+                elif mode == DBExecMode.DELETE.name:
+                    result = self.cur.rowcount
+        except PgError as e:
+            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
+        except Exception as e:
+            self.exec_state.failure("执行失败'{0}'".format(str(e)))
+
+        return result
+
+    def mogrify(self, sql_str, params=None):
+        return self.cur.mogrify(sql_str, params)
 
     def _get_permissions_condition(self):
         return True, []
@@ -539,7 +540,7 @@ class BaseTable(object):
 
     def _generate_update_sql(self, update_data=None, condition=None):
         self.__remove_extra_field(update_data)
-        self.__add_extra_value(update_data)
+        self.__add_extra_value(update_data, mode=DBExecMode.UPDATE.name)
 
         set_sql_list = []
         params = []
@@ -582,18 +583,19 @@ class BaseTable(object):
         data_list = []
         for update_data in update_data_list:
             self.__remove_extra_field(update_data)
-            self.__add_extra_value(update_data)
+            self.__add_extra_value(update_data, mode=DBExecMode.UPDATE.name)
 
             update_data_list = []
             for key in data_keys:
                 value = update_data.get(key)
                 if isinstance(update_data.get(key), (dict, list)):
-                    value = json.dumps(update_data.get(key))
+                    value = json.dumps(value)
                 update_data_list.append(value)
 
             data_list.append(tuple(update_data_list))
 
         if not condition_keys:
+            condition_keys = []
             condition_keys.extend(self.primary_keys)
 
         set_sql_list = []
@@ -622,7 +624,7 @@ class BaseTable(object):
                set {set_sql}
               from (values %s) as dt ({key_sql})
              where 1=1
-               and {where_sql}
+                   {where_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             set_sql=','.join(set_sql_list),

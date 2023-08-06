@@ -61,10 +61,6 @@ class UserController(BaseController):
         if not user_t.exec_success:
             return Response.error("创建用户失败[%s]" % user_t.error_msg)
 
-        user_t.delete(Sc([("name", "=", username)]))
-        if not user_t.exec_success:
-            return Response.error("注册用户失败[%s]" % user_t.error_msg)
-
         access_token = create_access_token(identity=username)
         self.commit()
         return Response.json_data({"access_token": access_token})

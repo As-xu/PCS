@@ -203,14 +203,41 @@ class BaseTable(object):
 
         return self._create(insert_sql, params=params)
 
-    def create_no_log(self, insert_dict):
+    def create_no_log(self, insert_data):
         old_log_field, self.__log_field = self.__log_field, False
-        result = self.create(insert_dict)
+        result = self.create(insert_data)
         self.__log_field = old_log_field
         return result
 
     def _create(self, sql_str, params=None):
         return self.__execute(sql_str, params=params, mode=DBExecMode.INSERT.name)
+
+    def batch_create(self, insert_data_list=None, page_size=1000, fetch=False):
+        if not insert_data_list:
+            return True
+
+        data_keys = insert_data_list[0].keys()
+        if not data_keys:
+            self.exec_state.failure("创建的数据字段为空")
+            return None
+
+        if any(value_dict.keys() != data_keys for value_dict in insert_data_list):
+            self.exec_state.failure("创建的数据字段不一致")
+            return None
+
+        insert_sql, params, template = self._generate_batch_insert_sql(insert_data_list)
+        if not insert_sql:
+            self.exec_state.failure('生成SQL失败')
+            return None
+
+        return self._batch_create(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch)
+
+    def _batch_create(self, insert_sql, params=None, template=None, page_size=1000, fetch=True):
+        rowcount = self.__execute(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch)
+        if not rowcount:
+            self.exec_state.no_change("未创建任何内容")
+
+        return True
 
     def delete(self, condition):
         if not condition:
@@ -285,10 +312,10 @@ class BaseTable(object):
 
     def batch_write(self, update_data_list, condition_keys=None, data_keys=None, page_size=1000, fetch=False,
                     field_type=None):
-        pass
         """
+        :param data_keys:
+        :param condition_keys:
         :param update_data_list:
-        :param update_key_list：指定更新数据的条件key
         :param page_size：每次执行数量
         :param fetch：是否抓取返回值
         :param field_type：指定每个键的数据类型, 针对部分情况下, 存在所有数值为None值时使用,支持 浮点数, 整数,bool值, 时间,日期, JSON
@@ -467,6 +494,48 @@ class BaseTable(object):
         )
 
         return insert_sql, tuple(parameter_list)
+
+    def _generate_batch_insert_sql(self, insert_data_list):
+        for insert_data in insert_data_list:
+            self.__add_extra_value(insert_data)
+
+        insert_keys = list(insert_data_list[0].keys())
+
+        data_list = []
+        for insert_data in insert_data_list:
+            self.__add_extra_value(insert_data)
+            self.__remove_extra_field(insert_data)
+
+            create_data_list = []
+            for key in insert_keys:
+                value = insert_data.get(key)
+                if isinstance(insert_data.get(key), (dict, list)):
+                    value = json.dumps(value)
+                create_data_list.append(value)
+
+            data_list.append(tuple(create_data_list))
+
+        template_keys = ', '.join('%s' for _ in range(len(insert_keys)))
+        tail_sql = ""
+        if self.db_type == DBType.Postgresql.value and self.primary_keys[0] == 'id':
+            insert_keys.append(self.primary_keys[0])
+            template_keys += ", nextval('{0}_id_seq')".format(self.table_name)
+            tail_sql = ' %s '
+
+        insert_sql = """
+            Insert Into {table_name}
+            ({fields_sql}) 
+            values
+            {tail_sql}
+        """.format(
+            table_name=self.get_table_name_sql(),
+            fields_sql=", ".join(self.get_table_field_sql(key) for key in insert_keys),
+            tail_sql=tail_sql,
+        )
+
+        template = '(' + template_keys + ')'
+
+        return insert_sql, data_list, template
 
     def _generate_update_sql(self, update_data=None, condition=None):
         self.__remove_extra_field(update_data)
@@ -712,187 +781,6 @@ class BaseTable(object):
             paras = tuple(sql_condition_value_list)
 
         return condition_sql, paras
-
-    def _generate_group_by_select_sql(self, src_select_sql, group_by, query_name_list=[], show_name_list=None):
-        pass
-
-    #     if not show_name_list:
-    #         show_name_list = query_name_list
-
-    #     group_by = self.__deal_multi_column_group_by(group_by)
-
-    #     group_name_list = [item for item in group_by]
-    #     need_group_name_list = [item for item in group_by if item.get("is_group")]
-
-    #     group_by_str = ""
-    #     new_query_name_list, new_show_name_list = [], []
-    #     if not need_group_name_list:
-    #         for query_name in query_name_list:
-    #             if query_name in group_name_list:
-    #                 continue
-
-    #             old_group_name_list, new_group_name_list, show_names_list = self.__get_new_group_name([query_name],
-    #                                                                                                   query_name_list,
-    #                                                                                                   show_name_list)
-
-    #             for old_group_name in old_group_name_list:
-    #                 new_query_name_list.append(old_group_name)
-    #                 new_show_name_list.append(show_names_list[old_group_name_list.index(old_group_name)])
-    #     else:
-    #         group_name_list = [need_group_name.get("group_name") for need_group_name in need_group_name_list]
-
-    #         old_group_name_list, new_group_name_list, show_names_list = self.__get_new_group_name(group_name_list,
-    #                                                                                               query_name_list,
-    #                                                                                               show_name_list)
-    #         for new_group_name in new_group_name_list:
-    #             new_query_name_list.append(new_group_name)
-    #             new_show_name_list.append(show_names_list[new_group_name_list.index(new_group_name)])
-
-    #         new_query_name_list.append("count(1)")
-    #         new_show_name_list.append("cnt")
-
-    #         group_by_str = " Group by %s" % str.join(",", new_group_name_list)
-
-    #         for need_group_name in need_group_name_list:
-    #             for item in need_group_name.get("aggregate_column",[]):
-    #                 new_query_name_list.append('%s' % (item.get("aggregate_function")))
-    #                 new_show_name_list.append(item.get("name"))
-
-    #     sql_query_name_list = []
-    #     for index in range(len(new_query_name_list)):
-    #         sql_query_name_list.append('%s %s%s%s' % (new_query_name_list[index], self.__join_char,
-    #                                                   new_show_name_list[index], self.__join_char))
-
-    #     select_sql = """
-    #                 select %s
-    #                   from (%s) t
-    #                  where 1 = 1
-    #                   %s
-    #                    """ % (str.join(',', sql_query_name_list), src_select_sql, group_by_str)
-
-    #     return select_sql
-
-    def __get_new_group_name(self, group_name_list, query_name_list, show_name_list):
-        pass
-
-    #     old_group_name_list, new_group_name_list, show_names_list = [], [], []
-
-    #     for group_name in group_name_list:
-    #         if ":" in group_name:
-    #             split_array = group_name.split(':')
-    #             old_group_name = split_array[0]
-    #             date_part = split_array[1]
-    #             date_type = split_array[2] if len(split_array) == 3 else 'date'
-
-    #             if date_type == "datetime":
-    #                 if date_part == "year":
-    #                     new_group_name = "date_part('%s', %s + interval '%s hours')" % (date_part, old_group_name, self.tz)
-    #                 elif date_part == 'day':
-    #                     new_group_name = "to_char(%s + interval '%s hours', 'yyyy-MM-dd')" % (old_group_name, self.tz)
-    #                 else:
-    #                     new_group_name = "cast(date_part('year', %s + interval '%s hours') as varchar(4)) || '-' || lpad(cast(date_part('%s', %s + interval '%s hours') as varchar(2)), 2, '0')" % (
-    #                     old_group_name, self.tz, date_part, old_group_name, self.tz)
-    #             else:
-    #                 if date_part == "year":
-    #                     new_group_name = "date_part('%s', %s)" % (date_part, old_group_name)
-    #                 elif date_part == 'day':
-    #                     new_group_name = "to_char(%s, 'yyyy-MM-dd')" % (old_group_name)
-    #                 else:
-    #                     new_group_name = "cast(date_part('year', %s) as varchar(4)) || '-' || lpad(cast(date_part('%s', %s) as varchar(2)), 2, '0')" % (
-    #                     old_group_name, date_part, old_group_name)
-
-    #             show_name = "%s:%s" % (show_name_list[query_name_list.index(old_group_name)], date_part)
-    #         else:
-    #             old_group_name = group_name
-    #             new_group_name = group_name
-    #             show_name = show_name_list[query_name_list.index(old_group_name)]
-
-    #         old_group_name_list.append(old_group_name)
-    #         new_group_name_list.append(new_group_name)
-    #         show_names_list.append(show_name)
-
-    #     return old_group_name_list, new_group_name_list, show_names_list
-
-    # def __deal_multi_column_group_by(self, group_by):
-    #     new_group_by = []
-    #     for group_by_item in group_by:
-    #         group_name = group_by_item.get("group_name")
-    #         is_group = group_by_item.get("is_group")
-    #         if not is_group:
-    #             new_group_by.append(group_by_item)
-    #             continue
-
-    #         if "," not in group_name:
-    #             new_group_by.append(group_by_item)
-    #             continue
-
-    #         multi_columns = group_name.split(",")
-    #         for group_column in multi_columns:
-    #             exists_group_by = [item for item in group_by if item.get("group_name") == group_column.strip()]
-    #             if exists_group_by:
-    #                 exists_group_by[0].update({"is_group": True})
-    #             else:
-    #                 new_item = group_by_item.copy()
-    #                 new_item.update({"group_name": group_column.strip()})
-
-    #                 if multi_columns.index(group_column) != 0:
-    #                     new_item.update({"aggregate_column": []})
-
-    #                 new_group_by.append(new_item)
-
-    #     return new_group_by
-
-    def batch_create(self, insert_value_list=None, page_size=1000, fetch=False):
-        pass
-    #     if not insert_value_list:
-    #         return True
-
-    #     data_keys = insert_value_list[0].keys()
-    #     if not data_keys:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'insert value is empty'
-    #         return False
-
-    #     if any(value_dict.keys() != data_keys for value_dict in insert_value_list):
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'insert value key is not same'
-    #         return False
-
-    #     value_iter = (self.__initial_add_data(value_data) for value_data in insert_value_list)
-
-    #     insert_sql, parameter_list, template = self._generate_batch_insert_sql(value_iter)
-
-    #     if not insert_sql:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'generate insert sql error'
-    #         return False
-
-    #     result = self._batch_create(insert_sql, paras=parameter_list, template=template, page_size=page_size,
-    #                                 fetch=fetch)
-    #     if self.error_code == Global.response_error_code:
-    #         return result
-
-    #     return result
-
-    def _batch_create(self, insert_sql, paras=None, template=None, page_size=1000, fetch=True):
-        pass
-    #     paras = paras if not paras else tuple(paras)
-
-    #     result = self._psqlOperate.execute_batch_create_scalar(insert_sql, parameters=paras, template=template, page_size=page_size, fetch=fetch)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return False
-
-    #     if not result:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'no data add'
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-
-    #     return result
 
 
 class ExecuteState:

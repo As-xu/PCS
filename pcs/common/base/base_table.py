@@ -113,6 +113,32 @@ class BaseTable(object):
     def get_table_field_sql(self, field):
         return ' {0}{1}{0} '.format(self.field_symbol, field)
 
+    def get_tables_info(self, table_names):
+        select_sql = """
+           select col.table_schema schema_name,
+                  col.table_name,
+                  col.column_name,
+                  col.is_nullable,
+                  col.data_type col_type,
+                  col.udt_name,
+                  pc.oid, 
+                  col.ordinal_position,
+                  COALESCE((SELECT col.ordinal_position = ANY ( conkey ) 
+                              FROM pg_constraint 
+                             WHERE contype = 'p' AND conrelid = pc.oid 
+                             ), FALSE ) is_primarykey,
+                  col_description(pc.oid, col.ordinal_position) column_comment
+             from information_schema.columns col
+        left join pg_namespace ns on ns.nspname = col.table_schema
+        left join pg_class pc on col.table_name = pc.relname and pc.relnamespace = ns.oid 
+            where col.table_name in %s
+            order by col.table_schema, col.table_name, col.ordinal_position
+        """
+        return self._query(select_sql, (table_names,))
+
+    def get_self_table_info(self):
+        return self.get_tables_info([self.table_name])
+
     def query(self, sc, fields=None, offset=None, limit=None, order_by=None, count=None, distinct=None):
         sql_str, params = self._generate_query_sql(sc, fields=fields, offset=offset, limit=limit,
                                                    order_by=order_by, count=count, distinct=distinct)
@@ -125,6 +151,44 @@ class BaseTable(object):
     def _query(self, sql_str, params=None):
         rows = self.__execute(sql_str, params=params)
         return rows
+
+    def paginate_query(self, condition, page_index=1, page_size=20, fields=None, order_by=None):
+        sql_str, params = self._generate_query_sql(condition, fields=fields, order_by=order_by)
+        if not sql_str:
+            self.exec_state.failure('生成SQL失败')
+            return None
+
+        return self._paginate_query(sql_str, params=params, page_index=page_index, page_size=page_size)
+
+    def _paginate_query(self, sql_str, params=None, page_index=1, page_size=20):
+        query_row_count_sql = """
+            select count(1) row_count 
+              from ({0}) t
+             where 1=1
+        """.format(sql_str)
+
+        rows = self.__execute(query_row_count_sql, params=params)
+        row_count = 0
+
+        if row_count <= (page_index - 1) * page_size:
+            page_index = 1
+
+        offset = (page_index - 1) * page_size
+        limit = page_size
+        query_sql = """
+            select * 
+              from (
+                    {sql_str}
+                   ) t 
+             limit {limit}
+            offset {offset}
+        """.format(
+            sql_str=sql_str,
+            limit=limit,
+            offset=offset,
+        )
+
+        return row_count, self.__execute(query_sql, params=params)
 
     def create(self, insert_data):
         if not insert_data:
@@ -191,6 +255,34 @@ class BaseTable(object):
 
         return None
 
+    def __execute(self, sql_str, params=None, mode=DBExecMode.QUERY.name, **kwargs):
+        result = None
+        self.exec_state.reset_state()
+        try:
+            if mode == DBExecMode.BATCH_UPDATE.name:
+                pass
+            elif mode == DBExecMode.BATCH_INSERT.name:
+                pass
+
+            self.cur.execute(sql_str, params)
+            if mode == DBExecMode.QUERY.name:
+                result = self.cur.fetchall()
+            elif mode == DBExecMode.UPDATE.name:
+                result = self.cur.rowcount
+            elif mode == DBExecMode.INSERT.name:
+                result = self.cur.fetchone()
+            elif mode == DBExecMode.DELETE.name:
+                result = self.cur.rowcount
+        except PgError as e:
+            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
+        except Exception as e:
+            self.exec_state.failure("执行失败'{0}'".format(str(e)))
+
+        return result
+
+    def mogrify(self, sql_str, params=None):
+        return self.cur.mogrify(sql_str, params)
+
     def batch_write(self, update_data_list, condition_keys=None, data_keys=None, page_size=1000, fetch=False,
                     field_type=None):
         pass
@@ -256,8 +348,7 @@ class BaseTable(object):
 
         return field_sql
 
-    def _generate_query_sql(self, sc, fields=None, offset=None, limit=None, order_by=None, count=None,
-                            distinct=None):
+    def _generate_query_sql(self, sc, fields=None, offset=None, limit=None, order_by=None, count=None, distinct=None):
         success, permissions_condition = self._get_permissions_condition()
         if not success:
             return False, None
@@ -328,6 +419,194 @@ class BaseTable(object):
                 new_conditions.append(condition)
 
         return new_conditions
+
+    def _generate_insert_sql(self, insert_data):
+        insert_fields = []
+        insert_paras = []
+        parameter_list = []
+
+        self.__remove_extra_field(insert_data)
+        self.__add_extra_value(insert_data)
+
+        if self.db_type == DBType.Postgresql.value and self.primary_keys:
+            insert_fields.append(self.primary_keys[0])
+            insert_paras.append("nextval('%s_id_seq')" % self.table_name)
+
+        for key in insert_data.keys():
+            insert_fields.append(key)
+            insert_paras.append('%s')
+
+            field_value = insert_data[key]
+            if isinstance(field_value, (dict, list)):
+                field_value = json.dumps(field_value)
+
+            parameter_list.append(field_value)
+
+        if not insert_fields:
+            return False, False
+
+        fields_sql = ",".join(self.get_table_field_sql(field) for field in insert_fields)
+        params_sql = ",".join(insert_paras)
+        return_sql = ""
+        if self.primary_keys and self.db_type == DBType.Postgresql.value:
+            return_sql = ' Returning "%s" ' % '","'.join(self.primary_keys)
+
+        insert_sql = """
+            Insert Into {table_name} (
+                {fields_sql}
+            )
+            Values(
+                {params_sql}
+            )
+            {return_sql}
+        """.format(
+            table_name=self.get_table_name_sql(),
+            fields_sql=fields_sql,
+            params_sql=params_sql,
+            return_sql=return_sql,
+        )
+
+        return insert_sql, tuple(parameter_list)
+
+    def _generate_update_sql(self, update_data=None, condition=None):
+        self.__remove_extra_field(update_data)
+        self.__add_extra_value(update_data)
+
+        set_sql_list = []
+        params = []
+        for field_name, field_value in update_data.items():
+            if isinstance(field_value, (dict, list)):
+                field_value = json.dumps(field_value)
+
+            set_sql = self.get_table_field_sql(field_name) + ' = %s '
+            set_sql_list.append(set_sql)
+            params.append(field_value)
+
+        where_sql, where_params = self.__generate_condition_sql(condition)
+
+        if not set_sql_list:
+            self.error_message = "未设置更新内容"
+            return None, None
+
+        if not where_sql:
+            self.error_message = "未设置更新条件"
+            return None, None
+
+        params.extend(where_params)
+
+        update_sql = """
+            update {table_name}
+               set {set_sql}
+             where 1=1
+                   {where_sql}
+        """.format(
+            table_name=self.get_table_name_sql(),
+            set_sql=','.join(set_sql_list),
+            where_sql=where_sql,
+        )
+        return update_sql, tuple(params)
+
+    def _generate_batch_update_sql(self, update_data_list, data_keys, condition_keys=None, field_type=None):
+        if not field_type:
+            field_type = {}
+
+        data_list = []
+        for update_data in update_data_list:
+            self.__remove_extra_field(update_data)
+            self.__add_extra_value(update_data)
+
+            update_data_list = []
+            for key in data_keys:
+                value = update_data.get(key)
+                if isinstance(update_data.get(key), (dict, list)):
+                    value = json.dumps(update_data.get(key))
+                update_data_list.append(value)
+
+            data_list.append(tuple(update_data_list))
+
+        if not condition_keys:
+            condition_keys.extend(self.primary_keys)
+
+        set_sql_list = []
+        where_sql_list = []
+
+        for key in data_keys:
+            key_sql = self.get_table_field_sql(key)
+            if key in condition_keys:
+                where_sub_sql = ' And {0}.{1} = dt.{1} '.format(self.get_table_name_sql(), key_sql)
+                where_sql_list.append(where_sub_sql)
+            else:
+                set_sql = ' {0} = dt.{0} '.format(key_sql)
+                set_sql_list.append(set_sql)
+
+        if not set_sql_list:
+            self.error_message = "未设置更新内容"
+            return False, False, False
+
+        if not where_sql_list:
+            self.error_message = "未设置更新条件"
+            return False, False, False
+
+        key_sql = ','.join(self.get_table_field_sql(key) for key in data_keys)
+        update_sql = """
+            update {table_name}
+               set {set_sql}
+              from (values %s) as dt ({key_sql})
+             where 1=1
+               and {where_sql}
+        """.format(
+            table_name=self.get_table_name_sql(),
+            set_sql=','.join(set_sql_list),
+            key_sql=key_sql,
+            where_sql=' '.join(where_sql_list),
+        )
+
+        type_dict = {
+            f: '::' + SQL_TYPE_MAP.get(data_type)
+            for data_type in field_type.keys()
+            for f in (field_type.get(data_type) or []) if data_type in SQL_TYPE_MAP.keys()
+        }
+        template = '(' + ','.join('%s' + (type_dict.get(key) or '') for key in data_keys) + ')'
+
+        return update_sql, data_list, template
+
+    def _generate_delete_sql(self, condition):
+        condition_sql, paras = self.__generate_condition_sql(condition)
+
+        delete_sql = """
+                    delete from {table_name}
+                     where 1= 1 
+                     {condition_sql}
+                """.format(
+            table_name=self.table_name,
+            condition_sql=condition_sql,
+        )
+        return delete_sql, paras
+
+    def __add_extra_value(self, value_dict, mode=DBExecMode.INSERT.name):
+        if mode == DBExecMode.INSERT.name:
+            if self.__log_field:
+                value_dict.update({
+                    'write_date': datetime.datetime.utcnow(),
+                    'write_uid': self.user_id,
+                    'create_date': datetime.datetime.utcnow(),
+                    'create_uid': self.user_id,
+                })
+
+            for key in self.default_value.keys():
+                if key in value_dict.keys():
+                    continue
+
+                value_dict[key] = self.default_value[key]
+        elif mode == DBExecMode.UPDATE.name:
+            if self.__log_field:
+                value_dict.update({
+                    'write_date': datetime.datetime.utcnow(),
+                    'write_uid': self.user_id,
+                })
+
+    def __remove_extra_field(self, value_dict):
+        value_dict.pop(SAVE_FLAG, None)
 
     def __generate_condition_sql(self, sc):
         conditions = sc.condition
@@ -433,273 +712,6 @@ class BaseTable(object):
             paras = tuple(sql_condition_value_list)
 
         return condition_sql, paras
-
-    def paginate_query(self, condition, page_index=1, page_size=20, fields=None, order_by=None):
-        sql_str, params = self._generate_query_sql(condition, fields=fields, order_by=order_by)
-        if not sql_str:
-            self.exec_state.failure('生成SQL失败')
-            return None
-
-        return self._paginate_query(sql_str, params=params, page_index=page_index, page_size=page_size)
-
-    def _paginate_query(self, sql_str, params=None, page_index=1, page_size=20):
-        query_row_count_sql = """
-            select count(1) row_count 
-              from ({0}) t
-             where 1=1
-        """.format(sql_str)
-
-        rows = self.__execute(query_row_count_sql, params=params)
-        row_count = 0
-
-        if row_count <= (page_index - 1) * page_size:
-            page_index = 1
-
-        offset = (page_index - 1) * page_size
-        limit = page_size
-        query_sql = """
-            select * 
-              from (
-                    {sql_str}
-                   ) t 
-             limit {limit}
-            offset {offset}
-        """.format(
-            sql_str=sql_str,
-            limit=limit,
-            offset=offset,
-        )
-
-        return row_count, self.__execute(query_sql, params=params)
-
-    def __execute(self, sql_str, params=None, mode=DBExecMode.QUERY.name, **kwargs):
-        result = None
-        self.exec_state.reset_state()
-        try:
-            if mode == DBExecMode.BATCH_UPDATE.name:
-                pass
-            elif mode == DBExecMode.BATCH_INSERT.name:
-                pass
-
-            self.cur.execute(sql_str, params)
-            if mode == DBExecMode.QUERY.name:
-                result = self.cur.fetchall()
-            elif mode == DBExecMode.UPDATE.name:
-                result = self.cur.rowcount
-            elif mode == DBExecMode.INSERT.name:
-                result = self.cur.fetchone()
-            elif mode == DBExecMode.DELETE.name:
-                result = self.cur.rowcount
-        except PgError as e:
-            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
-        except Exception as e:
-            self.exec_state.failure("执行失败'{0}'".format(str(e)))
-
-        return result
-
-    def mogrify(self, sql_str, params=None):
-        return self.cur.mogrify(sql_str, params)
-
-    def get_tables_info(self, table_names):
-        select_sql = """
-           select col.table_schema schema_name,
-                  col.table_name,
-                  col.column_name,
-                  col.is_nullable,
-                  col.data_type col_type,
-                  col.udt_name,
-                  pc.oid, 
-                  col.ordinal_position,
-                  COALESCE((SELECT col.ordinal_position = ANY ( conkey ) 
-                              FROM pg_constraint 
-                             WHERE contype = 'p' AND conrelid = pc.oid 
-                             ), FALSE ) is_primarykey,
-                  col_description(pc.oid, col.ordinal_position) column_comment
-             from information_schema.columns col
-        left join pg_namespace ns on ns.nspname = col.table_schema
-        left join pg_class pc on col.table_name = pc.relname and pc.relnamespace = ns.oid 
-            where col.table_name in %s
-            order by col.table_schema, col.table_name, col.ordinal_position
-        """
-        return self._query(select_sql, (table_names,))
-
-    def get_self_table_info(self):
-        return self.get_tables_info([self.table_name])
-
-    def _generate_insert_sql(self, insert_data):
-        insert_fields = []
-        insert_paras = []
-        parameter_list = []
-
-        self.__remove_extra_field(insert_data)
-        self.__add_extra_value(insert_data)
-
-        if self.db_type == DBType.Postgresql.value and self.primary_keys:
-            insert_fields.append(self.primary_keys[0])
-            insert_paras.append("nextval('%s_id_seq')" % self.table_name)
-
-        for key in insert_data.keys():
-            insert_fields.append(key)
-            insert_paras.append('%s')
-
-            field_value = insert_data[key]
-            if isinstance(field_value, (dict, list)):
-                field_value = json.dumps(field_value)
-
-            parameter_list.append(field_value)
-
-        if not insert_fields:
-            return False, False
-
-        fields_sql = ",".join(self.get_table_field_sql(field) for field in insert_fields)
-        params_sql = ",".join(insert_paras)
-        return_sql = ""
-        if self.primary_keys and self.db_type == DBType.Postgresql.value:
-            return_sql = ' Returning "%s" ' % '","'.join(self.primary_keys)
-
-        insert_sql = """
-            Insert Into {table_name} (
-                {fields_sql}
-            )
-            Values(
-                {params_sql}
-            )
-            {return_sql}
-        """.format(
-            table_name=self.get_table_name_sql(),
-            fields_sql=fields_sql,
-            params_sql=params_sql,
-            return_sql=return_sql,
-        )
-
-        return insert_sql, tuple(parameter_list)
-
-    def __add_extra_value(self, value_dict, mode=DBExecMode.INSERT.name):
-        if mode == DBExecMode.INSERT.name:
-            if self.__log_field:
-                value_dict.update({
-                    'write_date': datetime.datetime.utcnow(),
-                    'write_uid': self.user_id,
-                    'create_date': datetime.datetime.utcnow(),
-                    'create_uid': self.user_id,
-                })
-
-            for key in self.default_value.keys():
-                if key in value_dict.keys():
-                    continue
-
-                value_dict[key] = self.default_value[key]
-        elif mode == DBExecMode.UPDATE.name:
-            if self.__log_field:
-                value_dict.update({
-                    'write_date': datetime.datetime.utcnow(),
-                    'write_uid': self.user_id,
-                })
-
-    def __remove_extra_field(self, value_dict):
-        value_dict.pop(SAVE_FLAG, None)
-
-    def _generate_update_sql(self, update_data=None, condition=None):
-        self.__remove_extra_field(update_data)
-        self.__add_extra_value(update_data)
-
-        set_sql_list = []
-        params = []
-        for field_name, field_value in update_data.items():
-            if isinstance(field_value, (dict, list)):
-                field_value = json.dumps(field_value)
-
-            set_sql = self.get_table_field_sql(field_name) + ' = %s '
-            set_sql_list.append(set_sql)
-            params.append(field_value)
-
-        where_sql, where_params = self.__generate_condition_sql(condition)
-
-        if not set_sql_list:
-            self.error_message = "未设置更新内容"
-            return None, None
-
-        if not where_sql:
-            self.error_message = "未设置更新条件"
-            return None, None
-
-        params.extend(where_params)
-
-        update_sql = """
-            update {table_name}
-               set {set_sql}
-             where 1=1
-                   {where_sql}
-        """.format(
-            table_name=self.get_table_name_sql(),
-            set_sql=','.join(set_sql_list),
-            where_sql=where_sql,
-        )
-        return update_sql, tuple(params)
-
-    def _generate_batch_update_sql(self, update_data_list, data_keys, condition_keys=None, field_type=None):
-        if not field_type:
-            field_type = {}
-
-        data_list = []
-        for update_data in update_data_list:
-            self.__remove_extra_field(update_data)
-            self.__add_extra_value(update_data)
-
-            update_data_list = []
-            for key in data_keys:
-                value = update_data.get(key)
-                if isinstance(update_data.get(key), (dict, list)):
-                    value = json.dumps(update_data.get(key))
-                update_data_list.append(value)
-
-            data_list.append(tuple(update_data_list))
-
-        if not condition_keys:
-            condition_keys.extend(self.primary_keys)
-
-        set_sql_list = []
-        where_sql_list = []
-
-        for key in data_keys:
-            key_sql = self.get_table_field_sql(key)
-            if key in condition_keys:
-                where_sub_sql = ' And {0}.{1} = dt.{1} '.format(self.get_table_name_sql(), key_sql)
-                where_sql_list.append(where_sub_sql)
-            else:
-                set_sql = ' {0} = dt.{0} '.format(key_sql)
-                set_sql_list.append(set_sql)
-
-        if not set_sql_list:
-            self.error_message = "未设置更新内容"
-            return False, False, False
-
-        if not where_sql_list:
-            self.error_message = "未设置更新条件"
-            return False, False, False
-
-        key_sql = ','.join(self.get_table_field_sql(key) for key in data_keys)
-        update_sql = """
-            update {table_name}
-               set {set_sql}
-              from (values %s) as dt ({key_sql})
-             where 1=1
-               and {where_sql}
-        """.format(
-            table_name=self.get_table_name_sql(),
-            set_sql=','.join(set_sql_list),
-            key_sql=key_sql,
-            where_sql=' '.join(where_sql_list),
-        )
-
-        type_dict = {
-            f: '::' + SQL_TYPE_MAP.get(data_type)
-            for data_type in field_type.keys()
-            for f in (field_type.get(data_type) or []) if data_type in SQL_TYPE_MAP.keys()
-        }
-        template = '(' + ','.join('%s' + (type_dict.get(key) or '') for key in data_keys) + ')'
-
-        return update_sql, data_list, template
 
     def _generate_group_by_select_sql(self, src_select_sql, group_by, query_name_list=[], show_name_list=None):
         pass
@@ -830,22 +842,8 @@ class BaseTable(object):
 
     #     return new_group_by
 
-    def _generate_delete_sql(self, condition):
-        condition_sql, paras = self.__generate_condition_sql(condition)
-
-        delete_sql = """
-                    delete from {table_name}
-                     where 1= 1 
-                     {condition_sql}
-                """.format(
-            table_name=self.table_name,
-            condition_sql=condition_sql,
-        )
-        return delete_sql, paras
-
     def batch_create(self, insert_value_list=None, page_size=1000, fetch=False):
         pass
-
     #     if not insert_value_list:
     #         return True
 

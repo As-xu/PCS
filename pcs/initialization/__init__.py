@@ -1,5 +1,5 @@
-from pcs.common.base import base_bp
-from pcs.common.base import BaseTable
+from pcs.common.base.base_blueprint import base_bp
+from pcs.common.base.base_table import BaseTable
 from pcs.extensions.db_link_extension.pooled_db import PooledDB
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
@@ -56,12 +56,12 @@ class Initializer:
 
         db_pool = self.pcs_app.db_pool
         for name, conf in db_conf.items():
+            self.pcs_app.dbs_conf[name] = conf.copy()
             db_type = conf.pop("db_type", None)
             is_use = conf.pop("is_use", None)
             if not is_use:
                 continue
 
-            self.pcs_app.dbs_conf[name] = conf
             if db_type == "postgresql":
                 creator = psycopg2
 
@@ -87,14 +87,12 @@ class Initializer:
 
             if issubclass(module, BaseTable):
                 if not module.db_name:
-                    # module.set_db_name('main')
                     module.db_name = 'main'
 
                 conf = self.pcs_app.dbs_conf.get(module.db_name)
                 if not conf:
                     raise "未配置[%s]数据库" % module.db_name
 
-                # module.set_db_type(conf.get("db_type"))
                 module.db_type = conf.get("db_type")
                 self.pcs_app.add_table(module)
 

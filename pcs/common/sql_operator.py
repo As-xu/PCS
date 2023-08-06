@@ -1,4 +1,3 @@
-
 SQL_QUERY_FIELD = 'field'
 SQL_QUERY_OPERATE = 'operate'
 SQL_OR = '|'
@@ -16,3 +15,9 @@ PAGE_SIZE = "page_size"
 QUERY_CONDITION = 'query_condition'
 ORDER_BY = "order_by"
 GROUP_BY = "group_by"
+
+SAVE_FLAG = 'save_flag'
+
+SQL_TYPE_MAP = {
+    "int": "INTEGER", "float": "NUMERIC", "bool": "BOOLEAN", "datetime": "TIMESTAMP", "date": "DATE", "json": "JSON",
+}

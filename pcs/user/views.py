@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 @user_bp.route('/login', methods=["POST", "GET"])
 def user_login():
     json_data = request.json
-    if request.method == 'POST':
+    if request.method == 'GET':
         return render_template('login.html')
     else:
         controller = UserController(request)
@@ -27,9 +27,12 @@ def user_logout():
 
 @user_bp.route('/register', methods=["POST", "GET"])
 def user_register():
-    c = UserController(request)
-    result = c.create_user()
-    return render_template('login.html')
+    json_data = request.json
+    if request.method == 'GET':
+        return render_template('login.html')
+    else:
+        controller = UserController(request)
+        return controller.user_register(json_data)
 
 
 @user_bp.route('/change_password', methods=["POST", "GET"])

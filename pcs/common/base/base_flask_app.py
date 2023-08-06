@@ -28,7 +28,7 @@ class BaseFlaskApp(Flask):
     def add_table(self, table_class):
         self.__tables.add_table(table_class)
 
-    def get_db_connect(self, db_name=None):
+    def get_db_connect(self, db_name=None, autocommit=True):
         if not db_name:
             pool = self.__db_pool['main']
         else:
@@ -37,4 +37,6 @@ class BaseFlaskApp(Flask):
             else:
                 return False
 
-        return pool.connection()
+        conn = pool.connection()
+        conn.set_conn(autocommit)
+        return conn

@@ -359,3 +359,6 @@ class PooledSharedDBConnection:
     def __exit__(self, *exc):
         """退出连接的运行时上下文."""
         self.close()
+
+    def set_conn(self, *args, **kwargs):
+        self._con.set_conn(*args, **kwargs)

@@ -1,4 +1,4 @@
-from pcs.common.enum.system_enum import DBResultState, DBType
+from pcs.common.enum.system_enum import DBResultState, DBType, DBExecMode
 from psycopg2.errors import Error as PgError
 from pcs.common.sql_operator import *
 import logging
@@ -55,16 +55,24 @@ class BaseTable(object):
     db_type = None
     table_name = None
     default_value = {}
-    log_field = True
-    primary_keys = ("id", )
+    primary_keys = ("id",)
 
     def __init__(self, cur, user_id=None):
         self.cur = cur
         self.user_id = user_id
+        self.user_id = 1
+        self.__log_field = True
+
         self.exec_state = ExecuteState()
 
     @property
     def field_symbol(self):
+        if self.db_type == DBType.Postgresql.value:
+            return '"'
+        return ''
+
+    @property
+    def table_field_sql(self):
         if self.db_type == DBType.Postgresql.value:
             return '"'
         return ''
@@ -87,6 +95,24 @@ class BaseTable(object):
             return 'not regexp'
         return '!~'
 
+    @property
+    def exec_success(self):
+        return self.exec_state.state == DBResultState.SUCCESS.value
+
+    @property
+    def exec_failure(self):
+        return self.exec_state.state == DBResultState.FAILURE.value
+
+    @property
+    def error_msg(self):
+        return self.exec_state.error_msg
+
+    def get_table_name_sql(self):
+        return ' {0}{1}{0} '.format(self.field_symbol, self.table_name)
+
+    def get_table_field_sql(self, field):
+        return ' {0}{1}{0} '.format(self.field_symbol, field)
+
     def query(self, sc, fields=None, offset=None, limit=None, order_by=None, count=None, distinct=None):
         sql_str, params = self._generate_query_sql(sc, fields=fields, offset=offset, limit=limit,
                                                    order_by=order_by, count=count, distinct=distinct)
@@ -97,10 +123,14 @@ class BaseTable(object):
         return self._query(sql_str, params=params)
 
     def _query(self, sql_str, params=None):
-        rows = self.__execute(sql_str, params)
+        rows = self.__execute(sql_str, params=params)
         return rows
 
     def create(self, insert_data):
+        if not insert_data:
+            self.exec_state.failure("创建内容为空")
+            return None
+
         insert_sql, params = self._generate_insert_sql(insert_data)
 
         if not insert_sql:
@@ -109,20 +139,101 @@ class BaseTable(object):
 
         return self._create(insert_sql, params=params)
 
+    def create_no_log(self, insert_dict):
+        old_log_field, self.__log_field = self.__log_field, False
+        result = self.create(insert_dict)
+        self.__log_field = old_log_field
+        return result
+
     def _create(self, sql_str, params=None):
-        return self.__execute(sql_str, params)
+        return self.__execute(sql_str, params=params, mode=DBExecMode.INSERT.name)
 
-    def delete(self):
+    def delete(self, condition):
+        if not condition:
+            self.exec_state.failure("未设定删除条件")
+            return None
+
+        delete_sql, params = self._generate_delete_sql(condition)
+
+        if not delete_sql:
+            self.exec_state.failure('生成SQL失败')
+            return None
+
+        return self._delete(delete_sql, params=params)
+
+    def _delete(self, delete_sql, params=None):
+        rowcount = self.__execute(delete_sql, params=params, mode=DBExecMode.INSERT.name)
+        if not rowcount:
+            self.exec_state.no_change("未删除任何内容")
+
         return None
 
-    def batch_create(self):
+    def write(self, update_dict, condition):
+        if not update_dict:
+            self.exec_state.failure("更新内容为空")
+            return None
+
+        if not condition:
+            self.exec_state.failure("更新未设定条件")
+            return None
+
+        update_sql, params = self._generate_update_sql(update_dict, condition)
+        if not update_sql:
+            self.exec_state.failure("更新未设定条件")
+            return None
+
+        return self._write(update_sql, params=params)
+
+    def _write(self, update_sql, params=None):
+        rowcount = self.__execute(update_sql, params=params, mode=DBExecMode.UPDATE.name)
+        if not rowcount:
+            self.exec_state.no_change("未更新任何内容")
+
         return None
 
-    def update(self):
-        return None
+    def batch_write(self, update_data_list, condition_keys=None, data_keys=None, page_size=1000, fetch=False,
+                    field_type=None):
+        pass
+        """
+        :param update_data_list:
+        :param update_key_list：指定更新数据的条件key
+        :param page_size：每次执行数量
+        :param fetch：是否抓取返回值
+        :param field_type：指定每个键的数据类型, 针对部分情况下, 存在所有数值为None值时使用,支持 浮点数, 整数,bool值, 时间,日期, JSON
+        {
+            "int":["int_field"],
+            "float": ["float_field"],
+            "bool":["bool_field"],
+            "datetime":["datetime_field"],
+            "date":["datetime_field"],
+            "json":["json_field"],
+        }
+        :return:
+        """
+        if not update_data_list:
+            return True
 
-    def _write(self):
-        return None
+        data_keys = data_keys if data_keys else update_data_list[0].keys()
+        for update_dict in update_data_list:
+            if data_keys != update_dict.keys():
+                self.exec_state.failure("更新的字段不一致")
+                return None
+
+        update_sql, params, template = self._generate_batch_update_sql(update_data_list, data_keys,
+                                                                       condition_keys=condition_keys,
+                                                                       field_type=field_type)
+        if not update_sql:
+            self.exec_state.failure("生成SQL失败")
+            return None
+
+        return self._batch_write(update_sql, params=params, template=template, page_size=page_size, fetch=fetch)
+
+    def _batch_write(self, update_sql, params=None, template=None, page_size=1000, fetch=True):
+        rowcount = self.__execute(update_sql, params=params, template=template, page_size=page_size, fetch=fetch)
+        if not rowcount:
+            self.exec_state.no_change("未更新任何内容")
+
+        return True
 
     def _get_permissions_condition(self):
         return True, []
@@ -158,12 +269,11 @@ class BaseTable(object):
 
         select_sql = """
             select {field_sql}
-              from {symbol}{table_name}{symbol}
+              from {table_name}
              where 1 = 1
                    {condition_sql}
         """.format(
-            symbol=self.field_symbol,
-            table_name=self.table_name,
+            table_name=self.get_table_name_sql(),
             field_sql=field_sql,
             condition_sql=condition_sql,
         )
@@ -204,7 +314,8 @@ class BaseTable(object):
                         new_conditions.append({SQL_QUERY_FIELD: "", SQL_QUERY_OPERATE: SQL_OR, SQL_QUERY_VALUE: ""})
 
                 for item in value_list:
-                    new_conditions.append({SQL_QUERY_FIELD: query_name, SQL_QUERY_OPERATE: operate, SQL_QUERY_VALUE: item})
+                    new_conditions.append(
+                        {SQL_QUERY_FIELD: query_name, SQL_QUERY_OPERATE: operate, SQL_QUERY_VALUE: item})
             elif operate.startswith('in_or_'):
                 if value.find(",") != -1:
                     value = value.split(",")
@@ -254,9 +365,9 @@ class BaseTable(object):
                 continue
 
             lower_operate = operate.lower()
-            fields_sql_list =[]
+            fields_sql_list = []
             for f in fields:
-                field_str = self.field_symbol + f + self.field_symbol
+                field_str = self.get_table_field_sql(f)
                 if 'llike' == lower_operate:
                     operate_str = like_operate
                     sql_condition_value_list.append("%" + value)
@@ -323,7 +434,6 @@ class BaseTable(object):
 
         return condition_sql, paras
 
-
     def paginate_query(self, condition, page_index=1, page_size=20, fields=None, order_by=None):
         sql_str, params = self._generate_query_sql(condition, fields=fields, order_by=order_by)
         if not sql_str:
@@ -333,8 +443,13 @@ class BaseTable(object):
         return self._paginate_query(sql_str, params=params, page_index=page_index, page_size=page_size)
 
     def _paginate_query(self, sql_str, params=None, page_index=1, page_size=20):
-        query_row_count_sql = "select count(1) row_count from (%s) t" % sql_str
-        rows = self.__execute(query_row_count_sql, params)
+        query_row_count_sql = """
+            select count(1) row_count 
+              from ({0}) t
+             where 1=1
+        """.format(sql_str)
+
+        rows = self.__execute(query_row_count_sql, params=params)
         row_count = 0
 
         if row_count <= (page_index - 1) * page_size:
@@ -342,23 +457,48 @@ class BaseTable(object):
 
         offset = (page_index - 1) * page_size
         limit = page_size
-        query_sql = "select * from (%s) t limit %s offset %s" % (sql_str, limit, offset)
-        result = self.__execute(query_sql, params)
+        query_sql = """
+            select * 
+              from (
+                    {sql_str}
+                   ) t 
+             limit {limit}
+            offset {offset}
+        """.format(
+            sql_str=sql_str,
+            limit=limit,
+            offset=offset,
+        )
+
+        return row_count, self.__execute(query_sql, params=params)
+
+    def __execute(self, sql_str, params=None, mode=DBExecMode.QUERY.name, **kwargs):
+        result = None
+        self.exec_state.reset_state()
+        try:
+            if mode == DBExecMode.BATCH_UPDATE.name:
+                pass
+            elif mode == DBExecMode.BATCH_INSERT.name:
+                pass
+
+            self.cur.execute(sql_str, params)
+            if mode == DBExecMode.QUERY.name:
+                result = self.cur.fetchall()
+            elif mode == DBExecMode.UPDATE.name:
+                result = self.cur.rowcount
+            elif mode == DBExecMode.INSERT.name:
+                result = self.cur.fetchone()
+            elif mode == DBExecMode.DELETE.name:
+                result = self.cur.rowcount
+        except PgError as e:
+            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
+        except Exception as e:
+            self.exec_state.failure("执行失败'{0}'".format(str(e)))
 
         return result
 
-    def __execute(self, sql_str, params=None, fetch_type=None):
-        try:
-            self.cur.execute(sql_str, params)
-            rows = self.cur.fetchall()
-        except PgError as e:
-            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
-            return None
-        except Exception as e:
-            self.exec_state.failure("执行SQL失败'{0}'".format(str(e)))
-            return None
-
-        return rows
+    def mogrify(self, sql_str, params=None):
+        return self.cur.mogrify(sql_str, params)
 
     def get_tables_info(self, table_names):
         select_sql = """
@@ -381,7 +521,7 @@ class BaseTable(object):
             where col.table_name in %s
             order by col.table_schema, col.table_name, col.ordinal_position
         """
-        return self._query(select_sql, (table_names, ))
+        return self._query(select_sql, (table_names,))
 
     def get_self_table_info(self):
         return self.get_tables_info([self.table_name])
@@ -411,14 +551,14 @@ class BaseTable(object):
         if not insert_fields:
             return False, False
 
-        fields_sql = ",".join("{0}{1}{0}".format(self.field_symbol, field) for field in insert_fields)
+        fields_sql = ",".join(self.get_table_field_sql(field) for field in insert_fields)
         params_sql = ",".join(insert_paras)
         return_sql = ""
         if self.primary_keys and self.db_type == DBType.Postgresql.value:
             return_sql = ' Returning "%s" ' % '","'.join(self.primary_keys)
 
         insert_sql = """
-            Insert Into {field_symbol}{table_name}{field_symbol} (
+            Insert Into {table_name} (
                 {fields_sql}
             )
             Values(
@@ -426,18 +566,17 @@ class BaseTable(object):
             )
             {return_sql}
         """.format(
-            field_symbol=self.field_symbol,
-            table_name=self.table_name,
+            table_name=self.get_table_name_sql(),
             fields_sql=fields_sql,
             params_sql=params_sql,
             return_sql=return_sql,
         )
 
-        return insert_sql, parameter_list
+        return insert_sql, tuple(parameter_list)
 
-    def __add_extra_value(self, value_dict, mode='create'):
-        if mode == 'create':
-            if self.log_field:
+    def __add_extra_value(self, value_dict, mode=DBExecMode.INSERT.name):
+        if mode == DBExecMode.INSERT.name:
+            if self.__log_field:
                 value_dict.update({
                     'write_date': datetime.datetime.utcnow(),
                     'write_uid': self.user_id,
@@ -450,254 +589,189 @@ class BaseTable(object):
                     continue
 
                 value_dict[key] = self.default_value[key]
-        elif mode == 'update':
-            if self.log_field:
+        elif mode == DBExecMode.UPDATE.name:
+            if self.__log_field:
                 value_dict.update({
                     'write_date': datetime.datetime.utcnow(),
                     'write_uid': self.user_id,
                 })
 
     def __remove_extra_field(self, value_dict):
-        value_dict.pop("save_flag", None)
+        value_dict.pop(SAVE_FLAG, None)
 
+    def _generate_update_sql(self, update_data=None, condition=None):
+        self.__remove_extra_field(update_data)
+        self.__add_extra_value(update_data)
 
-    # def _generate_batch_insert_sql(self, values_iter):
-    #     insert_sql = 'Insert Into %s%s%s (' % (self.__join_char, self._table_name, self.__join_char,)
-    #
-    #     value_list = [self.__add_extra_value(item) for item in values_iter]
-    #     insert_sql_name_list = list(value_list[0].keys())
-    #
-    #     parameter_list = []
-    #     for value_dict in value_list:
-    #         values_tuple = tuple(value_dict.get(key) for key in insert_sql_name_list)
-    #
-    #         values_tuple = tuple(json.dumps(value) if isinstance(value, dict) else value for value in values_tuple)
-    #
-    #         parameter_list.append(values_tuple)
-    #
-    #     template = ','.join(['%s'] * len(insert_sql_name_list))
-    #     if self.__odoo_table and self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         insert_sql_name_list.insert(0, self._primary_key_list[0])
-    #         if self._table_name == 'theoretical_final_freight':
-    #             template = "nextval('%s_seq'), " % self._table_name + template
-    #         else:
-    #             template = "nextval('%s_id_seq'), " % self._table_name + template
-    #
-    #
-    #     template = '(' + template + ')'
-    #     insert_sql_name = ",".join("%s%s%s" % (self.__join_char, name, self.__join_char,) for name in insert_sql_name_list)
-    #     insert_sql = insert_sql + insert_sql_name + ') values'
-    #
-    #     if self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         insert_sql += ' %s '
-    #
-    #     return insert_sql, parameter_list, template
-    #
-    # def _generate_update_sql(self, field_default_value_dict={}, update_key_list=None):
-    #     #v1.0 update_key_list only support str list
-    #     #v2.0 update_key_list support either str list or tuple list
-    #     if not update_key_list:
-    #         update_key_list = []
-    #     elif isinstance(update_key_list, str):
-    #         update_key_list = [update_key_list]
-    #     elif isinstance(update_key_list, tuple):
-    #         update_key_list = [update_key_list]
-    #
-    #     # True: use key list generate sql condition
-    #     # False: use tuple list generate sql condition
-    #     condition_by_key = True
-    #     if update_key_list:
-    #         key_count, tuple_count = 0, 0
-    #         for item in update_key_list:
-    #             if isinstance(item, tuple):
-    #                 tuple_count += 1
-    #             elif isinstance(item, str):
-    #                 key_count += 1
-    #             else:
-    #                 self.error_message = "update key type not support."
-    #                 return False, False
-    #
-    #         if key_count > 0 and tuple_count > 0:
-    #             self.error_message = "update key type support either str or tuple."
-    #             return False, False
-    #         elif tuple_count > 0:
-    #             condition_by_key = False
-    #
-    #     self.__update_key_list = update_key_list
-    #     if not self.__update_key_list:
-    #         self.__update_key_list.extend(self._primary_key_list)
-    #
-    #     if Global.SAVE_FLAG_NAME in field_default_value_dict.keys():
-    #         field_default_value_dict.pop(Global.SAVE_FLAG_NAME)
-    #
-    #     if self.__exists_log_field:
-    #         field_default_value_dict.update({'write_date': datetime.datetime.utcnow()})
-    #         field_default_value_dict.update({'write_uid': self.user_id})
-    #
-    #     set_sql_list = []
-    #     parameter_list = []
-    #     sql_condition = []
-    #     for key in field_default_value_dict.keys():
-    #         field_value = field_default_value_dict[key]
-    #         if isinstance(field_value, dict):
-    #             field_value = json.dumps(field_value)
-    #
-    #         if condition_by_key and key in self.__update_key_list:
-    #             sql_condition.extend(SQC.qc((key, "=", field_value)))
-    #             continue
-    #
-    #         set_sql = ' %s%s%s = %%s ' % (self.__join_char, key, self.__join_char)
-    #         set_sql_list.append(set_sql)
-    #         parameter_list.append(field_value)
-    #
-    #     if not condition_by_key and self.__update_key_list:
-    #         sql_condition.extend(SQC.qc(self.__update_key_list))
-    #
-    #     where_sql, where_sql_parameter_list = self._get_sub_sql_conditon_and_paras(sql_condition)
-    #
-    #     if not set_sql_list:
-    #         self.error_message = "no set item value"
-    #         return False, False
-    #
-    #     if not where_sql:
-    #         self.error_message = "need set update condition"
-    #         return False, False
-    #
-    #     parameter_list.extend(where_sql_parameter_list)
-    #
-    #     set_sql = str.join(',', set_sql_list)
-    #     update_sql = 'update %s%s%s set %s where 1 = 1 %s' % (self.__join_char, self._table_name, self.__join_char,
-    #                                                           set_sql, where_sql)
-    #
-    #     return update_sql, parameter_list
-    #
-    # def _generate_batch_update_sql(self, update_data_list, update_key_list=None, field_type=None):
-    #     if not update_key_list:
-    #         update_key_list = []
-    #     elif isinstance(update_key_list, str):
-    #         update_key_list = [update_key_list]
-    #
-    #     if not field_type:
-    #         field_type = {}
-    #
-    #     condition_by_key = True
-    #
-    #     self.__update_key_list = update_key_list
-    #     if not self.__update_key_list:
-    #         self.__update_key_list.extend(self._primary_key_list)
-    #
-    #     for update_data in update_data_list:
-    #         update_data.pop(Global.SAVE_FLAG_NAME, None)
-    #         if self.__exists_log_field:
-    #             update_data.update({'write_date': datetime.datetime.utcnow()})
-    #             update_data.update({'write_uid': self.user_id})
-    #
-    #     set_sql_list = []
-    #     sql_condition = []
-    #
-    #     key_list = list(update_data_list[0].keys())
-    #     for key in key_list:
-    #         if condition_by_key and key in self.__update_key_list:
-    #             where_sub_sql = ' %s.%s%s%s = dt.%s%s%s ' % (self._table_name, self.__join_char, key, self.__join_char, self.__join_char, key, self.__join_char)
-    #             sql_condition.append(where_sub_sql)
-    #         else:
-    #             set_sql = ' %s%s%s = dt.%s%s%s ' % (self.__join_char, key, self.__join_char, self.__join_char, key, self.__join_char)
-    #             set_sql_list.append(set_sql)
-    #
-    #     if not set_sql_list:
-    #         self.error_message = "no set item value"
-    #         return False, False, False
-    #
-    #     if not sql_condition:
-    #         self.error_message = "need set update condition"
-    #         return False, False, False
-    #
-    #     where_sql = str.join(' And ', sql_condition)
-    #     key_sql = str.join(',', key_list)
-    #     set_sql = str.join(',', set_sql_list)
-    #     update_sql = 'update %s%s%s set %s  from (values %%s) as dt (%s) where 1 = 1 and %s' % (self.__join_char, self._table_name,
-    #                                                                          self.__join_char, set_sql, key_sql, where_sql)
-    #
-    #     data_list = [
-    #         tuple(update_data.get(key) if not isinstance(update_data.get(key), dict) else json.dumps(update_data.get(key))for key in key_list)
-    #         for update_data in update_data_list
-    #     ]
-    #
-    #     type_dict = {f: data_type for data_type in field_type for f in (field_type.get(data_type) or []) if data_type in SQL_TYPE_MAP.keys()}
-    #     template_keys = ("::" + SQL_TYPE_MAP.get(type_dict.get(key)) if type_dict.get(key) else "" for key in key_list)
-    #     template =  '(' + ','.join("%s" + key for key in template_keys) + ')'
-    #
-    #     return update_sql, data_list, template
-    #
-    #
-    #
-    # def _generate_group_by_select_sql(self, src_select_sql, group_by, query_name_list=[], show_name_list=None):
+        set_sql_list = []
+        params = []
+        for field_name, field_value in update_data.items():
+            if isinstance(field_value, (dict, list)):
+                field_value = json.dumps(field_value)
+
+            set_sql = self.get_table_field_sql(field_name) + ' = %s '
+            set_sql_list.append(set_sql)
+            params.append(field_value)
+
+        where_sql, where_params = self.__generate_condition_sql(condition)
+
+        if not set_sql_list:
+            self.error_message = "未设置更新内容"
+            return None, None
+
+        if not where_sql:
+            self.error_message = "未设置更新条件"
+            return None, None
+
+        params.extend(where_params)
+
+        update_sql = """
+            update {table_name}
+               set {set_sql}
+             where 1=1
+                   {where_sql}
+        """.format(
+            table_name=self.get_table_name_sql(),
+            set_sql=','.join(set_sql_list),
+            where_sql=where_sql,
+        )
+        return update_sql, tuple(params)
+
+    def _generate_batch_update_sql(self, update_data_list, data_keys, condition_keys=None, field_type=None):
+        if not field_type:
+            field_type = {}
+
+        data_list = []
+        for update_data in update_data_list:
+            self.__remove_extra_field(update_data)
+            self.__add_extra_value(update_data)
+
+            update_data_list = []
+            for key in data_keys:
+                value = update_data.get(key)
+                if isinstance(update_data.get(key), (dict, list)):
+                    value = json.dumps(update_data.get(key))
+                update_data_list.append(value)
+
+            data_list.append(tuple(update_data_list))
+
+        if not condition_keys:
+            condition_keys.extend(self.primary_keys)
+
+        set_sql_list = []
+        where_sql_list = []
+
+        for key in data_keys:
+            key_sql = self.get_table_field_sql(key)
+            if key in condition_keys:
+                where_sub_sql = ' And {0}.{1} = dt.{1} '.format(self.get_table_name_sql(), key_sql)
+                where_sql_list.append(where_sub_sql)
+            else:
+                set_sql = ' {0} = dt.{0} '.format(key_sql)
+                set_sql_list.append(set_sql)
+
+        if not set_sql_list:
+            self.error_message = "未设置更新内容"
+            return False, False, False
+
+        if not where_sql_list:
+            self.error_message = "未设置更新条件"
+            return False, False, False
+
+        key_sql = ','.join(self.get_table_field_sql(key) for key in data_keys)
+        update_sql = """
+            update {table_name}
+               set {set_sql}
+              from (values %s) as dt ({key_sql})
+             where 1=1
+               and {where_sql}
+        """.format(
+            table_name=self.get_table_name_sql(),
+            set_sql=','.join(set_sql_list),
+            key_sql=key_sql,
+            where_sql=' '.join(where_sql_list),
+        )
+
+        type_dict = {
+            f: '::' + SQL_TYPE_MAP.get(data_type)
+            for data_type in field_type.keys()
+            for f in (field_type.get(data_type) or []) if data_type in SQL_TYPE_MAP.keys()
+        }
+        template = '(' + ','.join('%s' + (type_dict.get(key) or '') for key in data_keys) + ')'
+
+        return update_sql, data_list, template
+
+    def _generate_group_by_select_sql(self, src_select_sql, group_by, query_name_list=[], show_name_list=None):
+        pass
+
     #     if not show_name_list:
     #         show_name_list = query_name_list
-    #
+
     #     group_by = self.__deal_multi_column_group_by(group_by)
-    #
+
     #     group_name_list = [item for item in group_by]
     #     need_group_name_list = [item for item in group_by if item.get("is_group")]
-    #
+
     #     group_by_str = ""
     #     new_query_name_list, new_show_name_list = [], []
     #     if not need_group_name_list:
     #         for query_name in query_name_list:
     #             if query_name in group_name_list:
     #                 continue
-    #
+
     #             old_group_name_list, new_group_name_list, show_names_list = self.__get_new_group_name([query_name],
     #                                                                                                   query_name_list,
     #                                                                                                   show_name_list)
-    #
+
     #             for old_group_name in old_group_name_list:
     #                 new_query_name_list.append(old_group_name)
     #                 new_show_name_list.append(show_names_list[old_group_name_list.index(old_group_name)])
     #     else:
     #         group_name_list = [need_group_name.get("group_name") for need_group_name in need_group_name_list]
-    #
+
     #         old_group_name_list, new_group_name_list, show_names_list = self.__get_new_group_name(group_name_list,
     #                                                                                               query_name_list,
     #                                                                                               show_name_list)
     #         for new_group_name in new_group_name_list:
     #             new_query_name_list.append(new_group_name)
     #             new_show_name_list.append(show_names_list[new_group_name_list.index(new_group_name)])
-    #
+
     #         new_query_name_list.append("count(1)")
     #         new_show_name_list.append("cnt")
-    #
+
     #         group_by_str = " Group by %s" % str.join(",", new_group_name_list)
-    #
+
     #         for need_group_name in need_group_name_list:
     #             for item in need_group_name.get("aggregate_column",[]):
     #                 new_query_name_list.append('%s' % (item.get("aggregate_function")))
     #                 new_show_name_list.append(item.get("name"))
-    #
+
     #     sql_query_name_list = []
     #     for index in range(len(new_query_name_list)):
     #         sql_query_name_list.append('%s %s%s%s' % (new_query_name_list[index], self.__join_char,
     #                                                   new_show_name_list[index], self.__join_char))
-    #
+
     #     select_sql = """
     #                 select %s
     #                   from (%s) t
     #                  where 1 = 1
     #                   %s
     #                    """ % (str.join(',', sql_query_name_list), src_select_sql, group_by_str)
-    #
+
     #     return select_sql
-    #
-    # def __get_new_group_name(self, group_name_list, query_name_list, show_name_list):
+
+    def __get_new_group_name(self, group_name_list, query_name_list, show_name_list):
+        pass
+
     #     old_group_name_list, new_group_name_list, show_names_list = [], [], []
-    #
+
     #     for group_name in group_name_list:
     #         if ":" in group_name:
     #             split_array = group_name.split(':')
     #             old_group_name = split_array[0]
     #             date_part = split_array[1]
     #             date_type = split_array[2] if len(split_array) == 3 else 'date'
-    #
+
     #             if date_type == "datetime":
     #                 if date_part == "year":
     #                     new_group_name = "date_part('%s', %s + interval '%s hours')" % (date_part, old_group_name, self.tz)
@@ -714,20 +788,19 @@ class BaseTable(object):
     #                 else:
     #                     new_group_name = "cast(date_part('year', %s) as varchar(4)) || '-' || lpad(cast(date_part('%s', %s) as varchar(2)), 2, '0')" % (
     #                     old_group_name, date_part, old_group_name)
-    #
-    #
+
     #             show_name = "%s:%s" % (show_name_list[query_name_list.index(old_group_name)], date_part)
     #         else:
     #             old_group_name = group_name
     #             new_group_name = group_name
     #             show_name = show_name_list[query_name_list.index(old_group_name)]
-    #
+
     #         old_group_name_list.append(old_group_name)
     #         new_group_name_list.append(new_group_name)
     #         show_names_list.append(show_name)
-    #
+
     #     return old_group_name_list, new_group_name_list, show_names_list
-    #
+
     # def __deal_multi_column_group_by(self, group_by):
     #     new_group_by = []
     #     for group_by_item in group_by:
@@ -736,11 +809,11 @@ class BaseTable(object):
     #         if not is_group:
     #             new_group_by.append(group_by_item)
     #             continue
-    #
+
     #         if "," not in group_name:
     #             new_group_by.append(group_by_item)
     #             continue
-    #
+
     #         multi_columns = group_name.split(",")
     #         for group_column in multi_columns:
     #             exists_group_by = [item for item in group_by if item.get("group_name") == group_column.strip()]
@@ -749,169 +822,70 @@ class BaseTable(object):
     #             else:
     #                 new_item = group_by_item.copy()
     #                 new_item.update({"group_name": group_column.strip()})
-    #
+
     #                 if multi_columns.index(group_column) != 0:
     #                     new_item.update({"aggregate_column": []})
-    #
+
     #                 new_group_by.append(new_item)
-    #
+
     #     return new_group_by
-    #
-    #
 
-    #
+    def _generate_delete_sql(self, condition):
+        condition_sql, paras = self.__generate_condition_sql(condition)
 
-    #
-    # def _get_sub_sql_conditon_and_paras(self, sql_condition):
-    #     where_sql_list = []
-    #     where_sql_parameter_list = []
-    #     for item in sql_condition:
-    #         if item.get(Global.SQL_QUERY_OPERATE) in (Global.SQL_NULL, Global.SQL_NOTNULL):
-    #             where_sql_list.append('And %s%s%s is %s ' % (
-    #             self.__join_char, item.get(Global.SQL_QUERY_FIELD), self.__join_char,
-    #             item.get(Global.SQL_QUERY_OPERATE)))
-    #         else:
-    #             where_sql_list.append('And %s%s%s %s %%s ' % (self.__join_char, item.get(Global.SQL_QUERY_FIELD), self.__join_char,
-    #                                                           item.get(Global.SQL_QUERY_OPERATE)))
-    #             where_sql_parameter_list.append(item.get(Global.SQL_QUERY_VALUE))
-    #
-    #     if not where_sql_list:
-    #         return False, False
-    #
-    #     where_sql = str.join(' ', where_sql_list)
-    #
-    #     return where_sql, where_sql_parameter_list
-    #
+        delete_sql = """
+                    delete from {table_name}
+                     where 1= 1 
+                     {condition_sql}
+                """.format(
+            table_name=self.table_name,
+            condition_sql=condition_sql,
+        )
+        return delete_sql, paras
 
-    #
-    # def __initial_add_data(self, value_data):
-    #     value_data.pop("user_browser_tz", None)
-    #     value_data.update({key: value for key, value in self._add_initial_data.items() if key not in value_data.keys()})
-    #     return value_data
-    #
-    # def batch_create(self, insert_value_list=[], page_size=1000, fetch=False):
+    def batch_create(self, insert_value_list=None, page_size=1000, fetch=False):
+        pass
+
     #     if not insert_value_list:
     #         return True
-    #
+
     #     data_keys = insert_value_list[0].keys()
     #     if not data_keys:
     #         self.error_code = Global.response_error_code
     #         self.error_message = 'insert value is empty'
     #         return False
-    #
+
     #     if any(value_dict.keys() != data_keys for value_dict in insert_value_list):
     #         self.error_code = Global.response_error_code
     #         self.error_message = 'insert value key is not same'
     #         return False
-    #
+
     #     value_iter = (self.__initial_add_data(value_data) for value_data in insert_value_list)
-    #
+
     #     insert_sql, parameter_list, template = self._generate_batch_insert_sql(value_iter)
-    #
+
     #     if not insert_sql:
     #         self.error_code = Global.response_error_code
     #         self.error_message = 'generate insert sql error'
     #         return False
-    #
+
     #     result = self._batch_create(insert_sql, paras=parameter_list, template=template, page_size=page_size,
     #                                 fetch=fetch)
     #     if self.error_code == Global.response_error_code:
     #         return result
-    #
+
     #     return result
-    #
-    #
-    # def batch_create_odoo(self, insert_value_list=[], page_size=1000, fetch=False):
-    #     """
-    #     兼容odoo数据表的创建
-    #     :param insert_value_list:
-    #     :param page_size:
-    #     :param fetch:
-    #     :return:
-    #     """
-    #     self.__odoo_table = True
-    #
-    #     result = self.batch_create(insert_value_list, page_size=page_size, fetch=fetch)
-    #
-    #     self.__odoo_table = False
-    #
-    #     if self.error_code == Global.response_error_code:
-    #         return False
-    #
-    #     return result
-    #
-    # def create_odoo(self, insert_dict={}):
-    #     """
-    #     兼容odoo数据表的创建
-    #     :param insert_dict:
-    #     :return:
-    #     """
-    #     self.__odoo_table = True
-    #
-    #     result = self.create(insert_dict)
-    #
-    #     self.__odoo_table = False
-    #
-    #     if self.error_code == Global.response_error_code:
-    #         return False
-    #
-    #     if self._primary_key_list and self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         return result.get(self._primary_key_list[0])
-    #     else:
-    #         return result
-    #
-    # def create_no_log(self, insert_dict={}):
-    #     """
-    #     兼容数据表的没有create_uid, create_date, write_uid, write_date等日志字段表的创建
-    #     :param insert_dict:
-    #     :return:
-    #     """
-    #     self.__exists_log_field = False
-    #
-    #     result = self.create(insert_dict)
-    #
-    #     self.__exists_log_field = True
-    #
-    #     if self.error_code == Global.response_error_code:
-    #         return False
-    #
-    #     if self._primary_key_list and self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         return result.get(self._primary_key_list[0])
-    #     else:
-    #         return result
-    #
-    # def create_odoo_no_log(self, insert_dict={}):
-    #     """
-    #     兼容odoo数据表并且没有create_uid, create_date, write_uid, write_date等日志字段表的创建
-    #     :param insert_dict:
-    #     :return:
-    #     """
-    #     self.__odoo_table = True
-    #     self.__exists_log_field = False
-    #
-    #     result = self.create(insert_dict)
-    #
-    #     self.__odoo_table = True
-    #     self.__exists_log_field = False
-    #
-    #     if self.error_code == Global.response_error_code:
-    #         return False
-    #
-    #     if self._primary_key_list and self._psqlOperate.db_type == DBTypeEnum.PostgreDB.value[0]:
-    #         return result.get(self._primary_key_list[0])
-    #     else:
-    #         return result
-    #
-    #
-    # def _batch_create(self, insert_sql, paras=[], template=None, page_size=1000, fetch=True):
+
+    def _batch_create(self, insert_sql, paras=None, template=None, page_size=1000, fetch=True):
+        pass
     #     paras = paras if not paras else tuple(paras)
-    #
+
     #     result = self._psqlOperate.execute_batch_create_scalar(insert_sql, parameters=paras, template=template, page_size=page_size, fetch=fetch)
     #     if self._psqlOperate.exists_error:
     #         self.error_code = Global.response_error_code
     #         self.error_message = self._psqlOperate.error_message
     #         return False
-    #
+
     #     if not result:
     #         self.error_code = Global.response_error_code
     #         self.error_message = 'no data add'
@@ -919,319 +893,8 @@ class BaseTable(object):
     #     else:
     #         self.error_code = Global.response_correct_code
     #         self.error_message = None
-    #
+
     #     return result
-    #
-    # def _create(self, insert_sql, paras=None):
-    #     paras = paras if not paras else tuple(paras)
-    #
-    #     result = self._psqlOperate.execute_create_scalar(insert_sql, parameters=paras)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return False
-    #
-    #     if not result:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'no data add'
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return result
-    #
-    # def query_pagination(self, query_condition, page_index=1, page_size=80, query_name_list=None, show_name_list=None,
-    #                      order_by=None, group_by=None):
-    #     if not query_name_list:
-    #         query_name_list = []
-    #
-    #     if not show_name_list:
-    #         show_name_list = []
-    #
-    #     sql_text, parameter_list = self._generate_query_sql(query_condition, query_name_list=query_name_list,
-    #                                                         show_name_list=show_name_list, order_by=order_by,
-    #                                                         group_by=group_by)
-    #     if not sql_text:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = 'generate select sql script error'
-    #         return None, None, None
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return self._query_pagination(sql_text, paras=parameter_list, page_index=page_index, page_size=page_size)
-    #
-    # def _query_pagination(self, sql_text, paras=None, page_index=1, page_size=80):
-    #     query_row_count_sql = "select count(1) from (%s) t" % sql_text
-    #
-    #     row_count = self._psqlOperate.execute_scalar(query_row_count_sql, parameters=paras)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return None, None, None
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     if row_count == 0:
-    #         return 0, [], 1
-    #
-    #     if row_count <= (page_index - 1) * page_size:
-    #         page_index = 1
-    #
-    #     offset = (page_index - 1) * page_size
-    #     limit = page_size
-    #     query_sql = "select * from (%s) t limit %s offset %s" % (sql_text, limit, offset)
-    #     result = self._psqlOperate.execute_return_model_list(query_sql, parameters=paras)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return None, None, None
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     obj_list = self.__convert_query_data_2_return_data(result)
-    #
-    #     return row_count, obj_list, page_index
-    #
-    # def query(self, query_condition, query_name_list=None, show_name_list=None, offset=None, limit=None, order_by=None,
-    #           count=False, group_by=None, distinct_search=False):
-    #     warnings.warn("query is deprecated, use search function", DeprecationWarning)
-    #
-    #     if not query_name_list:
-    #         query_name_list = []
-    #
-    #     if not show_name_list:
-    #         show_name_list = []
-    #
-    #     sql_text, parameter_list = self._generate_query_sql(query_condition, query_name_list=query_name_list,
-    #                                                         show_name_list=show_name_list, offset=offset, limit=limit,
-    #                                                         order_by=order_by, count=count, group_by=group_by,
-    #                                                         distinct_search=distinct_search)
-    #     if not sql_text:
-    #         return None
-    #
-    #     return self._query(sql_text, paras=parameter_list)
-    #
-    # def _query(self, select_sql, paras=None):
-    #     result = self._psqlOperate.execute_return_model_list(select_sql, parameters=paras)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     obj_list = self.__convert_query_data_2_return_data(result)
-    #
-    #     return obj_list
-    #
-    # def __convert_query_data_2_return_data(self, result):
-    #     obj_list = []
-    #     result_is_dict = False
-    #     if isinstance(self._psqlOperate, MysqlOperate):
-    #         result_is_dict = True
-    #
-    #     if self.__result_is_dict:
-    #         if result_is_dict:
-    #             obj_list = result
-    #         else:
-    #             obj_list = [item.convert_to_json() for item in result]
-    #     else:
-    #         if result_is_dict:
-    #             obj_list = self._psqlOperate.json_to_base_model(result)
-    #         else:
-    #             obj_list = result
-    #
-    #     return obj_list
-    #
-    # def write(self, update_dict={}, update_key_list=None):
-    #     """
-    #     :param update_dict:
-    #     :param update_key_list：指定更新键条件
-    #     :return:
-    #     """
-    #     need_update_dict = {}
-    #     for key in update_dict.keys():
-    #         if key == "user_browser_tz":
-    #             continue
-    #
-    #         need_update_dict.update({key: update_dict[key]})
-    #
-    #     update_sql, parameter_list = self._generate_update_sql(need_update_dict, update_key_list=update_key_list)
-    #     if not update_sql:
-    #         self.error_code = Global.response_error_code
-    #
-    #         if not self.error_message:
-    #             self.error_message = 'generate update sql error'
-    #
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return self._write(update_sql, paras=parameter_list)
-    #
-    # def _write(self, update_sql, paras=None):
-    #     result = self._psqlOperate.execute_update_scalar(update_sql, parameters=paras)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     if not result:
-    #         self.error_code = Global.no_data_affect
-    #         self.error_message = 'no data update'
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return True
-    #
-    # def batch_write(self, update_data_list=[], update_key_list=None, page_size=1000, fetch=False, field_type=None):
-    #     """
-    #     :param update_data_list:
-    #     :param update_key_list：指定更新数据的条件key
-    #     :param page_size：每次执行数量
-    #     :param fetch：是否抓取返回值
-    #     :param field_type：指定每个键的数据类型, 针对部分情况下, 存在所有数值为None值时使用,支持 浮点数,整数,bool值, 时间,日期, JSON
-    #     如果数据中有JSON, 那么必须指定字段类型, 字符类型无需指定,指定也无效
-    #     {
-    #         "int":["int_field"],
-    #         "float": ["float_field"],
-    #         "bool":["bool_field"],
-    #         "datetime":["datetime_field"],
-    #         "date":["datetime_field"],
-    #         "json":["json_field"],
-    #     }
-    #     :return:
-    #     """
-    #     if not update_data_list:
-    #         return True
-    #
-    #     data_keys = update_data_list[0].keys()
-    #
-    #     for update_dict in update_data_list:
-    #         update_dict.pop("user_browser_tz", None)
-    #         if data_keys != update_dict.keys():
-    #             self.error_code = Global.response_error_code
-    #             self.error_message = 'insert value key is not same'
-    #             return False
-    #
-    #     update_sql, parameter_list, template = self._generate_batch_update_sql(update_data_list, update_key_list=update_key_list, field_type=field_type)
-    #     if not update_sql:
-    #         self.error_code = Global.response_error_code
-    #
-    #         if not self.error_message:
-    #             self.error_message = 'generate update sql error'
-    #
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return self._batch_write(update_sql, paras=parameter_list, template=template, page_size=page_size, fetch=fetch)
-    #
-    # def _batch_write(self, update_sql, paras=None, template=None, page_size=1000, fetch=True):
-    #     result = self._psqlOperate.execute_batch_update_scalar(update_sql, parameters=paras, template=template, page_size=page_size, fetch=fetch)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     if not result:
-    #         self.error_code = Global.no_data_affect
-    #         self.error_message = 'no data update'
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return True
-    #
-    # def delete(self, delete_condition={}):
-    #     # v1.0 update_key_list only support dict
-    #     # v2.0 update_key_list support either dict or (tuple or tuple list)
-    #     if not delete_condition:
-    #         delete_condition = []
-    #     elif isinstance(delete_condition, tuple):
-    #         delete_condition = [delete_condition]
-    #
-    #     # True: use key list generate sql condition
-    #     # False: use tuple list generate sql condition
-    #     condition_by_key = True
-    #     if delete_condition:
-    #         key_count, tuple_count = 0, 0
-    #         for item in delete_condition:
-    #             if isinstance(item, tuple):
-    #                 tuple_count += 1
-    #             elif isinstance(item, str):
-    #                 key_count += 1
-    #             else:
-    #                 self.error_code = Global.response_error_code
-    #                 self.error_message = "update key type not support."
-    #                 return False
-    #
-    #         if key_count > 0 and tuple_count > 0:
-    #             self.error_code = Global.response_error_code
-    #             self.error_message = "update key type support either str or tuple."
-    #             return False
-    #         elif tuple_count > 0:
-    #             condition_by_key = False
-    #
-    #     delete_sql = "delete from %s where 1= 1 " % self._table_name
-    #
-    #     sql_condition = []
-    #     if condition_by_key and delete_condition:
-    #         for key in delete_condition:
-    #             sql_condition.extend(SQC.qc((key, "=", delete_condition[key])))
-    #     elif not condition_by_key and delete_condition:
-    #         sql_condition.extend(SQC.qc(delete_condition))
-    #
-    #     where_sql, parameter_list = self._get_sub_sql_conditon_and_paras(sql_condition)
-    #
-    #     if not where_sql:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = "generate delete sql error."
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     delete_sql += where_sql
-    #
-    #     return self._delete(delete_sql, paras=parameter_list)
-    #
-    # def _delete(self, delete_sql, paras=None):
-    #     result = self._psqlOperate.execute_update_scalar(delete_sql, paras)
-    #     if self._psqlOperate.exists_error:
-    #         self.error_code = Global.response_error_code
-    #         self.error_message = self._psqlOperate.error_message
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     if not result:
-    #         self.error_code = Global.no_data_affect
-    #         self.error_message = 'no data delete'
-    #         return False
-    #     else:
-    #         self.error_code = Global.response_correct_code
-    #         self.error_message = None
-    #
-    #     return True
-    #
 
 
 class ExecuteState:
@@ -1251,6 +914,6 @@ class ExecuteState:
         self.state = DBResultState.NOCHANGE.value
         self.error_msg = msg
 
-    def set_state(self):
+    def reset_state(self):
         self.state = DBResultState.SUCCESS.value
         self.error_msg = ""

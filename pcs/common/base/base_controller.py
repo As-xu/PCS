@@ -1,8 +1,11 @@
 from flask import current_app
+from pcs.common.base.base_table import BaseTable
+from pcs.common.base.base_flask_app import BaseFlaskApp
 from psycopg2.extras import RealDictCursor
 import logging
 
 logger = logging.getLogger(__name__)
+current_app: BaseFlaskApp
 
 
 class BaseController:
@@ -15,7 +18,7 @@ class BaseController:
         return conn.cursor(name=name, cursor_factory=RealDictCursor)
 
     def get_table_obj(self, table_name):
-        table_obj = current_app.get_table_obj(table_name, self.cur)
+        table_obj: BaseTable = current_app.get_table_obj(table_name, self.cur)
         return table_obj
 
     def get_table_objs(self, *table_names):
@@ -37,7 +40,7 @@ class BaseController:
             pass
 
     def close_autocommit(self):
-        self.conn.autocommit = False
+        self.conn.set_conn(autocommit=False)
 
     def commit(self):
         self.conn.commit()

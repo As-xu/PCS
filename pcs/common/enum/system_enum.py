@@ -21,3 +21,13 @@ class DBType(BaseEnum):
     Postgresql = 'postgresql'
     MySql = 'mysql'
     Redis = 'redis'
+
+
+@unique
+class DBExecMode(BaseEnum):
+    QUERY = 'Query'
+    INSERT = 'Insert'
+    BATCH_INSERT = 'Batch Insert'
+    UPDATE = 'Update'
+    BATCH_UPDATE = 'Batch Update'
+    DELETE = 'Delete'

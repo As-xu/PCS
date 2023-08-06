@@ -188,6 +188,10 @@ class SteadyDBConnection:
                 cursor.execute(sql)
             cursor.close()
 
+    def set_conn(self, autocommit=False, *args, **kwargs):
+        self._con.autocommit = autocommit
+        return None
+
     def _store(self, con):
         """存储数据库连接以供后续使用."""
         self._con = con

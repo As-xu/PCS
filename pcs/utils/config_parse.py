@@ -32,7 +32,7 @@ class ConfigManager(object):
 
         self.options = {
             "SECRET_KEY": SECRET_KEY,
-            "JWT_SECRET_KEY": SECRET_KEY,
+            "JWT_TOKEN_LOCATION": ["cookies"],
         }
         self.config_file = None
         self.parser = optparse.OptionParser(option_class=PCSOption)

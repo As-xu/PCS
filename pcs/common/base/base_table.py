@@ -56,6 +56,7 @@ class BaseTable(object):
         self.cur = cur
         self.user_id = user_id
         self.user_id = 1
+        self.login_ip = ''
         self.__log_field = True
 
         self.exec_state = ExecuteState()
@@ -658,10 +659,8 @@ class BaseTable(object):
         if mode == DBExecMode.INSERT.name:
             if self.__log_field:
                 value_dict.update({
-                    'write_date': datetime.datetime.utcnow(),
-                    'write_uid': self.user_id,
-                    'create_date': datetime.datetime.utcnow(),
-                    'create_uid': self.user_id,
+                    'write_date': datetime.datetime.now(), 'write_uid': self.user_id,
+                    'create_date': datetime.datetime.now(), 'create_uid': self.user_id,
                 })
 
             for key in self.default_value.keys():
@@ -672,8 +671,7 @@ class BaseTable(object):
         elif mode == DBExecMode.UPDATE.name:
             if self.__log_field:
                 value_dict.update({
-                    'write_date': datetime.datetime.utcnow(),
-                    'write_uid': self.user_id,
+                    'write_date': datetime.datetime.now(), 'write_uid': self.user_id,
                 })
 
     def __remove_extra_field(self, value_dict):

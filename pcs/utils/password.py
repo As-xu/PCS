@@ -4,7 +4,7 @@ DEFAULT_CRYPT_CONTEXT = passlib.context.CryptContext(['pbkdf2_sha512', 'plaintex
 
 
 def check_password(password, hashed):
-    valid, replacement = DEFAULT_CRYPT_CONTEXT.verify(password, hashed)
+    valid = DEFAULT_CRYPT_CONTEXT.verify(password, hashed)
     if not valid:
         return False
 

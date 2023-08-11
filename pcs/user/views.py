@@ -2,6 +2,7 @@ from flask import render_template
 from flask import request
 from pcs.user import user_bp
 from pcs.user.controller.user_controller import UserController
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, get_jwt_header
 
 import logging
 
@@ -19,10 +20,11 @@ def user_login():
 
 
 @user_bp.route('/logout', methods=["POST", "GET"])
+@jwt_required(optional=True)
 def user_logout():
+    get_jwt()
     c = UserController(request)
-    result = c.create_user()
-    return render_template('login.html')
+    return c.user_logout()
 
 
 @user_bp.route('/register', methods=["POST", "GET"])
@@ -38,5 +40,4 @@ def user_register():
 @user_bp.route('/change_password', methods=["POST", "GET"])
 def user_change_password():
     c = UserController(request)
-    result = c.create_user()
     return render_template('login.html')

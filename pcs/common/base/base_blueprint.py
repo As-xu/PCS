@@ -5,7 +5,8 @@ logger = logging.getLogger(__name__)
 
 
 class BaseBlueprint(Blueprint):
-    pass
+    def route(self, *args, **kwargs):
+        return super(BaseBlueprint, self).route(*args, **kwargs)
 
 
 base_bp = BaseBlueprint('pcs_bp', __name__)

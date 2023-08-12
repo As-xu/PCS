@@ -1,4 +1,5 @@
-from flask import Flask
+from flask import Flask, jsonify
+from pcs.common.errors import DBError
 from .base_table import Tables
 from .base_db import DBPool
 import logging
@@ -40,3 +41,9 @@ class BaseFlaskApp(Flask):
         conn = pool.connection()
         conn.set_conn(autocommit)
         return conn
+
+    def dispatch_request(self):
+        try:
+            return super(BaseFlaskApp, self).dispatch_request()
+        except Exception as e:
+            raise

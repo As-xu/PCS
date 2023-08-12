@@ -5,7 +5,6 @@ from pcs.common.enum.user_enum import UserType
 from pcs.common.enum.common_enum import LogType
 from pcs.utils.password import check_password, encrypt_password
 from flask_jwt_extended import create_access_token, set_access_cookies, unset_access_cookies
-from datetime import datetime
 import logging
 
 
@@ -32,8 +31,6 @@ class UserController(BaseController):
             return Response.error("用户名或者密码错误")
 
         user_login_t.user_login()
-        if not user_login_t.exec_success:
-            return Response.error("创建用户登录日志失败[%s]" % user_login_t.error_msg)
 
         access_token = create_access_token(identity={"user_id": user_id, "user_name": username})
         response = Response.success("登录成功!")
@@ -58,31 +55,19 @@ class UserController(BaseController):
         hash_password = encrypt_password(password)
 
         user_data = {
-            "name": username,
-            "password": hash_password,
-            "active": True,
-            "phone": phone,
-            "email": email,
-            "show_name": username,
-            "user_type": UserType.guest.value,
+            "name": username, "password": hash_password, "active": True,
+            "phone": phone, "email": email, "show_name": username, "user_type": UserType.guest.value,
         }
         user_result = user_t.create(user_data)
-        if not user_t.exec_success:
-            return Response.error("创建用户失败[%s]" % user_t.error_msg)
 
         user_id = user_result.get("id")
         user_log_t.add_user_log(user_id, LogType.Create.value, "创建用户[{0}]成功".format(username))
-        if not user_log_t.exec_success:
-            return Response.error("创建用户日志失败[%s]" % user_log_t.error_msg)
         self.commit()
         return Response.success()
-
 
     def user_logout(self):
         user_login_t = self.get_table_obj('UserLoginTable')
         user_login_t.user_logout()
-        if not user_login_t.exec_success:
-            return Response.error("创建用户注销日志失败[%s]" % user_login_t.error_msg)
 
         response = Response.success()
         unset_access_cookies(response)

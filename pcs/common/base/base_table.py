@@ -3,6 +3,7 @@ from psycopg2.errors import Error as PgError
 from psycopg2 import extensions
 from psycopg2 import extras
 from pcs.common.sql_operator import *
+from pcs.common.errors import DBCreateError, DBQueryError, DBDeleteError, DBUpdateError
 import logging
 import datetime
 import json
@@ -139,8 +140,13 @@ class BaseTable(object):
         sql_str, params = self._generate_query_sql(sc, fields=fields, offset=offset, limit=limit,
                                                    order_by=order_by, count=count, distinct=distinct)
         if not sql_str:
-            self.exec_state.failure('生成SQL失败')
-            return None
+            error_info = """生成SQL失败:{}""".format(str(sc))
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBQueryError(error_info)
 
         return self._query(sql_str, params=params)
 
@@ -148,17 +154,21 @@ class BaseTable(object):
         rows = self.__execute(sql_str, params=params)
         return rows
 
-    def paginate_query(self, condition, page_index=1, page_size=20, fields=None, order_by=None):
-        sql_str, params = self._generate_query_sql(condition, fields=fields, order_by=order_by)
+    def paginate_query(self, sc, page_index=1, page_size=20, fields=None, order_by=None):
+        sql_str, params = self._generate_query_sql(sc, fields=fields, order_by=order_by)
         if not sql_str:
-            self.exec_state.failure('生成SQL失败')
-            return None
+            error_info = """生成SQL失败:{}""".format(str(sc))
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBQueryError(error_info)
 
         return self._paginate_query(sql_str, params=params, page_index=page_index, page_size=page_size)
 
     def _paginate_query(self, sql_str, params=None, page_index=1, page_size=20):
-        query_row_count_sql = """
-            select count(1) row_count 
+        query_row_count_sql = """select count(1) row_count 
               from ({0}) t
              where 1=1
         """.format(sql_str)
@@ -171,8 +181,7 @@ class BaseTable(object):
 
         offset = (page_index - 1) * page_size
         limit = page_size
-        query_sql = """
-            select * 
+        query_sql = """select * 
               from (
                     {sql_str}
                    ) t 
@@ -188,14 +197,20 @@ class BaseTable(object):
 
     def create(self, insert_data, return_fields=None):
         if not insert_data:
-            self.exec_state.failure("创建内容为空")
-            return None
+            error_info = "创建内容为空"
+            self.exec_state.failure(error_info)
+            raise DBCreateError(error_info)
 
         insert_sql, params = self._generate_insert_sql(insert_data)
 
         if not insert_sql:
-            self.exec_state.failure('生成SQL失败')
-            return None
+            error_info = """生成SQL失败:{}""".format(str(insert_data))
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBCreateError(error_info)
 
         return self._create(insert_sql, params=params)
 
@@ -214,17 +229,28 @@ class BaseTable(object):
 
         data_keys = insert_data_list[0].keys()
         if not data_keys:
-            self.exec_state.failure("创建的数据字段为空")
-            return None
+            error_info = "创建的数据字段为空"
+            self.exec_state.failure(error_info)
+            raise DBCreateError(error_info)
 
-        if any(value_dict.keys() != data_keys for value_dict in insert_data_list):
-            self.exec_state.failure("创建的数据字段不一致")
-            return None
+        for insert_data in insert_data_list:
+            if data_keys != insert_data.keys():
+                error_info = """创建的字段不一致:
+第一行: {0}
+异常行: {1}
+                """.format(",".join(data_keys), ",".join(data_keys.keys()))
+                self.exec_state.failure(error_info)
+                raise DBCreateError(error_info)
 
         insert_sql, params, template = self._generate_batch_insert_sql(insert_data_list)
         if not insert_sql:
-            self.exec_state.failure('生成SQL失败')
-            return None
+            error_info = """生成SQL失败:{}""".format(str(insert_data_list[0]))
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBCreateError(error_info)
 
         return self._batch_create(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch)
 
@@ -236,16 +262,22 @@ class BaseTable(object):
 
         return result
 
-    def delete(self, condition, return_fields=None):
-        if not condition:
-            self.exec_state.failure("未设定删除条件")
-            return None
+    def delete(self, sc, return_fields=None):
+        if not sc:
+            error_info = "未设定删除条件"
+            self.exec_state.failure(error_info)
+            raise DBDeleteError(error_info)
 
-        delete_sql, params = self._generate_delete_sql(condition)
+        delete_sql, params = self._generate_delete_sql(sc)
 
         if not delete_sql:
-            self.exec_state.failure('生成SQL失败')
-            return None
+            error_info = """生成SQL失败:{}""".format(str(sc))
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBDeleteError(error_info)
 
         return self._delete(delete_sql, params=params)
 
@@ -256,19 +288,26 @@ class BaseTable(object):
 
         return None
 
-    def write(self, update_dict, condition, return_fields=None):
+    def write(self, update_dict, sc, return_fields=None):
         if not update_dict:
-            self.exec_state.failure("更新内容为空")
-            return None
+            error_info = "更新内容为空"
+            self.exec_state.failure(error_info)
+            raise DBUpdateError(error_info)
 
-        if not condition:
-            self.exec_state.failure("更新未设定条件")
-            return None
+        if not sc:
+            error_info = "更新未设定条件"
+            self.exec_state.failure(error_info)
+            raise DBUpdateError(error_info)
 
-        update_sql, params = self._generate_update_sql(update_dict, condition)
+        update_sql, params = self._generate_update_sql(update_dict, sc)
         if not update_sql:
-            self.exec_state.failure("更新未设定条件")
-            return None
+            error_info = """生成SQL失败:{}""".format(str(sc))
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBUpdateError(error_info)
 
         return self._write(update_sql, params=params)
 
@@ -305,15 +344,24 @@ class BaseTable(object):
         data_keys = data_keys if data_keys else update_data_list[0].keys()
         for update_dict in update_data_list:
             if data_keys != update_dict.keys():
-                self.exec_state.failure("更新的字段不一致")
-                return None
+                error_info = """更新字段不一致:
+第一行: {0}
+异常行: {1}
+                """.format(",".join(data_keys), ",".join(update_dict.keys()))
+                self.exec_state.failure(error_info)
+                raise DBUpdateError(error_info)
 
         update_sql, params, template = self._generate_batch_update_sql(update_data_list, data_keys,
                                                                        condition_keys=condition_keys,
                                                                        field_type=field_type)
         if not update_sql:
-            self.exec_state.failure("生成SQL失败")
-            return None
+            error_info = """生成SQL失败:{}""".format(update_data_list[0])
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            self.exec_state.failure(error_info)
+            raise DBUpdateError(error_info)
 
         return self._batch_write(update_sql, params=params, template=template, page_size=page_size, fetch=fetch)
 
@@ -327,7 +375,9 @@ class BaseTable(object):
 
     def __execute(self, sql_str, params=None, mode=DBExecMode.QUERY.name, template=None, page_size=None, fetch=None):
         result = None
+        error_info = None
         self.exec_state.reset_state()
+        params = params[1:]
         try:
             if mode in (DBExecMode.BATCH_UPDATE.name, DBExecMode.BATCH_INSERT.name):
                 if not isinstance(template, bytes) and template is not None:
@@ -347,14 +397,54 @@ class BaseTable(object):
                 elif mode == DBExecMode.DELETE.name:
                     result = self.cur.rowcount
         except PgError as e:
-            self.exec_state.failure("DB执行SQL失败'{0}'".format(str(e)))
+            full_sql = self.mogrify(sql_str, params, template=template)
+            exception_info = "{0}.{1}: {2}".format(e.__module__, type(e).__name__, e.pgerror)
+            error_info = """DB执行SQL失败
+-----sql----------\n{0}
+-----end sql------\n{1}
+            """.format(full_sql.decode(), exception_info)
+        except IndexError as e:
+            if mode not in (DBExecMode.BATCH_UPDATE.name, DBExecMode.BATCH_INSERT.name):
+                params_str = str(params)
+            else:
+                params_str = str(params[0])
+            exception_info = "{0}: {1}".format(type(e).__name__, str(e))
+            error_info = """执行前失败: 参数异常
+-----sql----------\n{0}
+params: {1}
+-----end sql------\n{2}
+            """.format(sql_str, params_str, exception_info)
         except Exception as e:
-            self.exec_state.failure("执行失败'{0}'".format(str(e)))
+            exception_info = "{0}: {1}".format(type(e).__name__, str(e))
+            error_info = """执行前失败: 未知异常
+-----sql----------\n{0}
+-----end sql------\n{1}
+            """.format(sql_str, exception_info)
+        if error_info:
+            if len(error_info) > 1048576:
+                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+                error_info = error_info[:524288] + error_info[-524288:]
+
+            error_info = error_info.strip()
+            self.exec_state.failure(error_info)
+            if mode == DBExecMode.QUERY.name:
+                raise DBQueryError(error_info)
+            elif mode in (DBExecMode.UPDATE.name, DBExecMode.BATCH_UPDATE.name):
+                raise DBUpdateError(error_info)
+            elif mode in (DBExecMode.INSERT.name, DBExecMode.BATCH_INSERT.name):
+                raise DBCreateError(error_info)
+            elif mode == DBExecMode.DELETE.name:
+                raise DBDeleteError(error_info)
+            else:
+                raise Exception(error_info)
 
         return result
 
-    def mogrify(self, sql_str, params=None):
-        return self.cur.mogrify(sql_str, params)
+    def mogrify(self, sql_str, params=None, template=None):
+        if not template:
+            return self.cur.mogrify(sql_str, params)
+        else:
+            return self.cur.mogrify(sql_str, params)
 
     def _get_permissions_condition(self):
         return True, []
@@ -387,11 +477,10 @@ class BaseTable(object):
         field_sql = self._generate_query_field_sql(fields, distinct)
         condition_sql, paras = self.__generate_condition_sql(sc)
 
-        select_sql = """
-            select {field_sql}
+        select_sql = """select {field_sql}
               from {table_name}
              where 1 = 1
-                   {condition_sql}
+             {condition_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             field_sql=field_sql,
@@ -480,8 +569,7 @@ class BaseTable(object):
         if self.primary_keys and self.db_type == DBType.Postgresql.value:
             return_sql = ' Returning "%s" ' % '","'.join(self.primary_keys)
 
-        insert_sql = """
-            Insert Into {table_name} (
+        insert_sql = """Insert Into {table_name} (
                 {fields_sql}
             )
             Values(
@@ -565,8 +653,7 @@ class BaseTable(object):
 
         params.extend(where_params)
 
-        update_sql = """
-            update {table_name}
+        update_sql = """update {table_name}
                set {set_sql}
              where 1=1
                    {where_sql}
@@ -645,10 +732,9 @@ class BaseTable(object):
     def _generate_delete_sql(self, condition):
         condition_sql, paras = self.__generate_condition_sql(condition)
 
-        delete_sql = """
-                    delete from {table_name}
-                     where 1= 1 
-                     {condition_sql}
+        delete_sql = """delete from {table_name}
+         where 1= 1
+         {condition_sql}
                 """.format(
             table_name=self.table_name,
             condition_sql=condition_sql,

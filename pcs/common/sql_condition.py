@@ -76,3 +76,6 @@ class Sc:
             raise InvalidScError(self.invalid_msg)
 
         return self.valid, self.invalid_msg
+
+    def __str__(self):
+        return ",".join(str(self.__condition))

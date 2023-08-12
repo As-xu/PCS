@@ -2,7 +2,7 @@ from flask import render_template
 from flask import request
 from pcs.user import user_bp
 from pcs.user.controller.user_controller import UserController
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, get_jwt_header
+from flask_jwt_extended import jwt_required
 
 import logging
 
@@ -19,10 +19,9 @@ def user_login():
         return controller.user_login(json_data)
 
 
-@user_bp.route('/logout', methods=["POST", "GET"])
+@user_bp.route('/logout', methods=["POST"])
 @jwt_required(optional=True)
 def user_logout():
-    get_jwt()
     c = UserController(request)
     return c.user_logout()
 

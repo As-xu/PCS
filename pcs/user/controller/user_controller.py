@@ -68,7 +68,6 @@ class UserController(BaseController):
     def user_logout(self):
         user_login_t = self.get_table_obj('UserLoginTable')
         user_login_t.user_logout()
-
         response = Response.success()
         unset_access_cookies(response)
         return response

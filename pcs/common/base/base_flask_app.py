@@ -21,8 +21,8 @@ class BaseFlaskApp(Flask):
     def db_pool(self):
         return self.__db_pool
 
-    def get_table_obj(self, table_name, conn, ):
-        return self.__tables.get_table(table_name, conn)
+    def get_table_obj(self, table_name, controller):
+        return self.__tables.get_table(table_name, controller)
 
     def add_table(self, table_class):
         self.__tables.add_table(table_class)

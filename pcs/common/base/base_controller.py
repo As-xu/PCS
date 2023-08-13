@@ -25,11 +25,11 @@ class BaseController:
         return conn.cursor(name=name, cursor_factory=RealDictCursor)
 
     def get_table_obj(self, table_name):
-        table_obj: BaseTable = current_app.get_table_obj(table_name, self.cur)
+        table_obj: BaseTable = current_app.get_table_obj(table_name, self)
         return table_obj
 
     def get_table_objs(self, *table_names):
-        table_objs = tuple(current_app.get_table_obj(name, self.conn) for name in table_names)
+        table_objs = tuple(current_app.get_table_obj(name, self) for name in table_names)
         return table_objs
 
     def get_table_obj_dict(self, table_names):

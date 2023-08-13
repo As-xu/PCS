@@ -38,12 +38,12 @@ class Tables:
 
         return False
 
-    def get_table(self, table_name, conn):
+    def get_table(self, table_name, controller):
         if not self.exists_table(table_name):
             raise Exception("不存在此Table %s" % table_name)
 
         table_class = self.__tables.get(table_name)
-        return table_class(conn)
+        return table_class(controller)
 
 
 class BaseTable(object):
@@ -53,11 +53,12 @@ class BaseTable(object):
     default_value = {}
     primary_keys = ("id",)
 
-    def __init__(self, cur, user_id=None):
-        self.cur = cur
-        self.user_id = user_id
-        self.user_id = 1
-        self.login_ip = ''
+    def __init__(self, controller):
+        self.cur = controller.cur
+        self.user_id = controller.user_id
+        self.user_name = controller.user_id
+        self.request_path = controller.request_path
+        self.request_ip = controller.request_ip
         self.__log_field = True
 
         self.exec_state = ExecuteState()

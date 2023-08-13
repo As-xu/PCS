@@ -235,9 +235,7 @@ class BaseTable(object):
 
         for insert_data in insert_data_list:
             if data_keys != insert_data.keys():
-                error_info = """创建的字段不一致:
-第一行: {0}
-异常行: {1}
+                error_info = """创建的字段不一致:\n第一行: {0}\n异常行: {1}
                 """.format(",".join(data_keys), ",".join(data_keys.keys()))
                 self.exec_state.failure(error_info)
                 raise DBCreateError(error_info)
@@ -344,9 +342,7 @@ class BaseTable(object):
         data_keys = data_keys if data_keys else update_data_list[0].keys()
         for update_dict in update_data_list:
             if data_keys != update_dict.keys():
-                error_info = """更新字段不一致:
-第一行: {0}
-异常行: {1}
+                error_info = """更新字段不一致:\n第一行: {0}\n异常行: {1}
                 """.format(",".join(data_keys), ",".join(update_dict.keys()))
                 self.exec_state.failure(error_info)
                 raise DBUpdateError(error_info)
@@ -399,9 +395,7 @@ class BaseTable(object):
         except PgError as e:
             full_sql = self.mogrify(sql_str, params, template=template)
             exception_info = "{0}.{1}: {2}".format(e.__module__, type(e).__name__, e.pgerror)
-            error_info = """DB执行SQL失败
------sql----------\n{0}
------end sql------\n{1}
+            error_info = """DB执行SQL失败\n-----sql----------\n{0}\n-----end sql------\n{1}
             """.format(full_sql.decode(), exception_info)
         except IndexError as e:
             if mode not in (DBExecMode.BATCH_UPDATE.name, DBExecMode.BATCH_INSERT.name):
@@ -409,16 +403,11 @@ class BaseTable(object):
             else:
                 params_str = str(params[0])
             exception_info = "{0}: {1}".format(type(e).__name__, str(e))
-            error_info = """执行前失败: 参数异常
------sql----------\n{0}
-params: {1}
------end sql------\n{2}
+            error_info = """执行前失败: 参数异常\n-----sql----------\n{0}\nparams: {1}\n-----end sql------\n{2}
             """.format(sql_str, params_str, exception_info)
         except Exception as e:
             exception_info = "{0}: {1}".format(type(e).__name__, str(e))
-            error_info = """执行前失败: 未知异常
------sql----------\n{0}
------end sql------\n{1}
+            error_info = """执行前失败: 未知异常\n-----sql----------\n{0}\n-----end sql------\n{1}
             """.format(sql_str, exception_info)
         if error_info:
             if len(error_info) > 1048576:

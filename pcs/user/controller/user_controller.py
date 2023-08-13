@@ -1,11 +1,11 @@
+import logging
+from pcs.utils.password import check_password, encrypt_password
+from flask_jwt_extended import create_access_token, set_access_cookies, unset_access_cookies
 from pcs.common.base import BaseController
 from pcs.common.sql_condition import Sc
 from pcs.common.response import Response
 from pcs.common.enum.user_enum import UserType
 from pcs.common.enum.common_enum import LogType
-from pcs.utils.password import check_password, encrypt_password
-from flask_jwt_extended import create_access_token, set_access_cookies, unset_access_cookies
-import logging
 
 
 logger = logging.getLogger(__name__)

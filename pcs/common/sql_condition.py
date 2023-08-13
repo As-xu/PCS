@@ -78,4 +78,4 @@ class Sc:
         return self.valid, self.invalid_msg
 
     def __str__(self):
-        return ",".join(str(self.__condition))
+        return ",".join(str(c) for c in self.__condition)

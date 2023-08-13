@@ -373,7 +373,6 @@ class BaseTable(object):
         result = None
         error_info = None
         self.exec_state.reset_state()
-        params = params[1:]
         try:
             if mode in (DBExecMode.BATCH_UPDATE.name, DBExecMode.BATCH_INSERT.name):
                 if not isinstance(template, bytes) and template is not None:

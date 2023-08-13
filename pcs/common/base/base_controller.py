@@ -1,8 +1,10 @@
+import logging
 from flask import current_app
+from flask_jwt_extended import get_jwt_identity
+from psycopg2.extras import RealDictCursor
 from pcs.common.base.base_table import BaseTable
 from pcs.common.base.base_flask_app import BaseFlaskApp
-from psycopg2.extras import RealDictCursor
-import logging
+
 
 logger = logging.getLogger(__name__)
 current_app: BaseFlaskApp
@@ -10,7 +12,12 @@ current_app: BaseFlaskApp
 
 class BaseController:
     def __init__(self, request):
-        self.request = request
+        self.request_ip = request.remote_addr
+        self.request_path = request.path
+        jwt_identity = get_jwt_identity() or {}
+        self.have_identity = True if jwt_identity else False
+        self.user_id = jwt_identity.get("user_id")
+        self.user_name = jwt_identity.get("user_name")
         self.conn = current_app.get_db_connect()
         self.cur = self._get_cursor(self.conn)
 

@@ -1,14 +1,12 @@
-from flask import Flask, jsonify
-from pcs.common.errors import DBError
+import logging
+from flask import Flask
 from .base_table import Tables
 from .base_db import DBPool
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 class BaseFlaskApp(Flask):
-
     def __init__(self, *args, **kwargs):
         self.__tables = Tables()
         self.__db_pool = DBPool()
@@ -23,7 +21,7 @@ class BaseFlaskApp(Flask):
     def db_pool(self):
         return self.__db_pool
 
-    def get_table_obj(self, table_name, conn):
+    def get_table_obj(self, table_name, conn, ):
         return self.__tables.get_table(table_name, conn)
 
     def add_table(self, table_class):

@@ -1,4 +1,6 @@
-from pcs.extensions.celery_extension import pcs_celery_app
+import sys
+from pcs.extensions.celery_extension.app import app
 
 if __name__ == '__main__':
-    pcs_celery_app.start()
+    argv = sys.argv
+    app.start(argv=argv[1:])

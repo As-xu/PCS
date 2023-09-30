@@ -128,7 +128,7 @@ class Initializer:
         format_str = '%(asctime)s %(process)s %(levelname)s %(name)s: %(message)s'
 
         logging.getLogger().removeHandler(default_handler)
-        if os.environ.get("FLASK_ENV") == "development":
+        if os.environ.get("FLASK_ENV") == "production":
             try:
                 log_file = os.path.join(log_dir, log_file)
                 if log_dir and not os.path.isdir(log_dir):

@@ -1,6 +1,5 @@
 from pcs.common.base import BaseTable
 from pcs.common.enum.user_enum import LoginType
-from pcs.common.errors import DBQueryError
 from datetime import datetime
 
 

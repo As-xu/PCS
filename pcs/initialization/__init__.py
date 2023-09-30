@@ -1,7 +1,7 @@
 from pcs.common.base.base_blueprint import base_bp
 from pcs.common.base.base_table import BaseTable
 from pcs.common.errors import DBError, DBCreateError, DBUpdateError, DBDeleteError
-from pcs.extensions.db_link_extension.pooled_db import PooledDB
+from pcs.extensions.db_link.pooled_db import PooledDB
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
 import logging
@@ -17,7 +17,6 @@ jwt = JWTManager()
 
 class Initializer:
     def __init__(self, app):
-        super().__init__()
         self.pcs_app = app
 
     @property

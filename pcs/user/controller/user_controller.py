@@ -30,7 +30,7 @@ class UserController(BaseController):
         if is_valid:
             return Response.error("用户名或者密码错误")
 
-        user_login_t.user_login()
+        user_login_t.user_login(user_id)
 
         access_token = create_access_token(identity={"user_id": user_id, "user_name": username})
         response = Response.success("登录成功!")
@@ -66,6 +66,10 @@ class UserController(BaseController):
         return Response.success()
 
     def user_logout(self):
+        if not self.user_id:
+            response = Response.error("尚未登录")
+            unset_access_cookies(response)
+            return response
         user_login_t = self.get_table_obj('UserLoginTable')
         user_login_t.user_logout()
         response = Response.success()

@@ -5,6 +5,7 @@ logger = logging.getLogger('pcs')
 from pcs.initialization import Initializer
 from pcs.utils.config_parse import parse_config
 from pcs.common.base import BaseFlaskApp
+from flask.cli import load_dotenv
 
 
 def create_app():
@@ -13,6 +14,8 @@ def create_app():
 
     app = BaseFlaskApp(__name__, template_folder='templates')
     try:
+        load_dotenv()
+
         if config:
             app.config.from_mapping(config)
 

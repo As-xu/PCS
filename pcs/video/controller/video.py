@@ -9,8 +9,11 @@ logger = logging.getLogger(__name__)
 
 class VideoController(BaseController):
     def query_all_video(self, query_condition):
+        qc = query_condition.get('query_params') or []
+        sc = Sc.parse2sc(qc)
+
         video_t = self.get_table_obj('VideoTable')
-        row_count, user_result = video_t.paginate_query(query_condition)
+        row_count, user_result = video_t.paginate_query(sc)
         return Response.pagination(user_result, row_count)
 
     def query_video_info(self, query_data):

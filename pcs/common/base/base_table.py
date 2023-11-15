@@ -791,22 +791,22 @@ class BaseTable(object):
             fields_sql_list = []
             for f in fields:
                 field_str = self.get_table_field_sql(f)
-                if 'llike' == lower_operate:
+                if 'l_like' == lower_operate:
                     operate_str = like_operate
                     sql_condition_value_list.append("%" + value)
                 elif lower_operate in ('like', 'ilike'):
                     operate_str = like_operate
                     sql_condition_value_list.append("%" + value + "%")
-                elif 'rlike' == lower_operate:
+                elif 'r_like' == lower_operate:
                     operate_str = like_operate
                     sql_condition_value_list.append(value + "%")
                 elif lower_operate in ('not like', 'not ilike'):
                     operate_str = ' not ' + like_operate
                     sql_condition_value_list.append("%" + value + "%")
-                elif 'regular_exp' == lower_operate:
+                elif 're' == lower_operate:
                     operate_str = regex_operate
                     sql_condition_value_list.append(value)
-                elif 'not regular_exp' == lower_operate:
+                elif 'not re' == lower_operate:
                     operate_str = not_regex_operate
                     sql_condition_value_list.append(value)
                 elif 'null' == lower_operate:

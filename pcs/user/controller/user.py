@@ -35,6 +35,7 @@ class UserController(BaseController):
         access_token = create_access_token(identity={"user_id": user_id, "user_name": username})
         response = Response.success("登录成功!")
         set_access_cookies(response, access_token)
+        logger.warning(response.headers)
         return response
 
     def user_register(self, request_data):
@@ -67,7 +68,7 @@ class UserController(BaseController):
 
     def user_logout(self):
         if not self.user_id:
-            response = Response.error("尚未登录")
+            response = Response.success("尚未登录")
             unset_access_cookies(response)
             return response
         user_login_t = self.get_table_obj('UserLoginTable')
@@ -75,3 +76,9 @@ class UserController(BaseController):
         response = Response.success()
         unset_access_cookies(response)
         return response
+
+    def query_user_info(self, json_data):
+        return Response.success()
+
+    def change_password(self, json_data):
+        return Response.success()

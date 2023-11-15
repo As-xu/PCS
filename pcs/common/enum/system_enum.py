@@ -10,9 +10,9 @@ class DBResultState(BaseEnum):
 
 @unique
 class ResponseState(BaseEnum):
-    SUCCESS = 100
-    WARNING = 200
-    FAILURE = 300
+    SUCCESS = 200
+    WARNING = 300
+    FAILURE = 400
 
 
 

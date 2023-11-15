@@ -35,5 +35,13 @@ def user_register():
 
 @bp.route('/change_password', methods=["POST", "GET"])
 def user_change_password():
+    json_data = request.json
     c = UserController(request)
-    return render_template('login.html')
+    return c.change_password(json_data)
+
+
+@bp.route('/query_user_info', methods=["POST", "GET"])
+def query_user_info():
+    json_data = request.json
+    c = UserController(request)
+    return c.query_user_info(json_data)

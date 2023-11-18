@@ -2,7 +2,7 @@ from pcs.common.enum.system_enum import DBResultState, DBType, DBExecMode
 from psycopg2.errors import Error as PgError
 from psycopg2 import extensions
 from psycopg2 import extras
-from pcs.common.sql_operator import *
+from pcs.common.common_const import JCK, SQL_TYPE_MAP, QOP
 from pcs.common.errors import DBCreateError, DBQueryError, DBDeleteError, DBUpdateError
 import logging
 import datetime
@@ -182,17 +182,8 @@ class BaseTable(object):
 
         offset = (page_index - 1) * page_size
         limit = page_size
-        query_sql = """select * 
-              from (
-                    {sql_str}
-                   ) t 
-             limit {limit}
-            offset {offset}
-        """.format(
-            sql_str=sql_str,
-            limit=limit,
-            offset=offset,
-        )
+        query_sql = """select * from ({sql_str}) t limit {limit} offset {offset}
+        """.format(sql_str=sql_str, limit=limit, offset=offset)
 
         return row_count, self.__execute(query_sql, params=params)
 
@@ -438,6 +429,9 @@ class BaseTable(object):
     def _get_permissions_condition(self):
         return True, []
 
+    def _get_permissions_fields(self, fields):
+        return True, fields
+
     def _generate_query_field_sql(self, fields=None, distinct=False):
         if not fields:
             fields = []
@@ -461,15 +455,16 @@ class BaseTable(object):
         if not success:
             return False, None
 
+        success, fields = self._get_permissions_fields(fields)
+        if not success:
+            return False, None
+
         sc.add_conditions(permissions_condition)
 
         field_sql = self._generate_query_field_sql(fields, distinct)
         condition_sql, paras = self.__generate_condition_sql(sc)
 
-        select_sql = """select {field_sql}
-              from {table_name}
-             where 1 = 1
-             {condition_sql}
+        select_sql = """select {field_sql} from {table_name} where 1 = 1 {condition_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             field_sql=field_sql,
@@ -490,42 +485,17 @@ class BaseTable(object):
 
         return select_sql, paras
 
-    def __done_special_query_condition(self, conditions):
-        if not conditions:
-            return []
+    def __do_special_query_condition(self, conditions):
+        # if not conditions:
+        #     return []
+        #
+        # new_conditions = []
+        # for condition in conditions:
+        #     query_name = condition[1]
+        #     operate = condition[0]
+        #     value = condition[2]
 
-        new_conditions = []
-        for condition in conditions:
-            query_name = condition.get(SQL_QUERY_FIELD)
-            operate = condition.get(SQL_QUERY_OPERATE)
-            value = condition.get(SQL_QUERY_VALUE)
-
-            if operate.startswith('in_or_') and operate.endswith('like'):
-                operate = operate.replace('in_or_', '')
-                if value.find(",") != -1:
-                    value_list = value.split(",")
-                else:
-                    value_list = [value]
-
-                if len(value_list) > 1:
-                    for index in range(0, len(value_list) - 1):
-                        new_conditions.append({SQL_QUERY_FIELD: "", SQL_QUERY_OPERATE: SQL_OR, SQL_QUERY_VALUE: ""})
-
-                for item in value_list:
-                    new_conditions.append(
-                        {SQL_QUERY_FIELD: query_name, SQL_QUERY_OPERATE: operate, SQL_QUERY_VALUE: item})
-            elif operate.startswith('in_or_'):
-                if value.find(",") != -1:
-                    value = value.split(",")
-                    operate = "in"
-                else:
-                    operate = operate.replace('in_or_', '')
-
-                new_conditions.append({SQL_QUERY_FIELD: query_name, SQL_QUERY_OPERATE: operate, SQL_QUERY_VALUE: value})
-            else:
-                new_conditions.append(condition)
-
-        return new_conditions
+        return conditions
 
     def _generate_insert_sql(self, insert_data):
         insert_fields = []
@@ -558,13 +528,7 @@ class BaseTable(object):
         if self.primary_keys and self.db_type == DBType.Postgresql.value:
             return_sql = ' Returning "%s" ' % '","'.join(self.primary_keys)
 
-        insert_sql = """Insert Into {table_name} (
-                {fields_sql}
-            )
-            Values(
-                {params_sql}
-            )
-            {return_sql}
+        insert_sql = """Insert Into {table_name} ({fields_sql}) Values({params_sql}) {return_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             fields_sql=fields_sql,
@@ -601,11 +565,7 @@ class BaseTable(object):
             template_keys += ", nextval('{0}_id_seq')".format(self.table_name)
             tail_sql = ' %s '
 
-        insert_sql = """
-            Insert Into {table_name}
-            ({fields_sql}) 
-            values
-            {tail_sql}
+        insert_sql = """Insert Into {table_name} ({fields_sql}) values {tail_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             fields_sql=", ".join(self.get_table_field_sql(key) for key in insert_keys),
@@ -696,12 +656,7 @@ class BaseTable(object):
             return False, False, False
 
         key_sql = ','.join(self.get_table_field_sql(key) for key in data_keys)
-        update_sql = """
-            update {table_name}
-               set {set_sql}
-              from (values %s) as dt ({key_sql})
-             where 1=1
-                   {where_sql}
+        update_sql = """update {table_name} set {set_sql} from (values %s) as dt ({key_sql}) where 1=1 {where_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             set_sql=','.join(set_sql_list),
@@ -750,11 +705,10 @@ class BaseTable(object):
                 })
 
     def __remove_extra_field(self, value_dict):
-        value_dict.pop(SAVE_FLAG, None)
+        value_dict.pop(JCK.MODIFY_TYPE, None)
 
     def __generate_condition_sql(self, sc):
-        conditions = sc.condition
-        conditions = self.__done_special_query_condition(conditions)
+        conditions = self.__do_special_query_condition(sc.condition)
 
         like_operate = self.like_operate
         regex_operate = self.regex_operate
@@ -765,9 +719,9 @@ class BaseTable(object):
         operate_or_count = 0
         operate_or_used_count = 0
         for condition in conditions:
-            field = condition.get(SQL_QUERY_FIELD)
-            operate = condition.get(SQL_QUERY_OPERATE)
-            value = condition.get(SQL_QUERY_VALUE)
+            field = condition[1]
+            operate = condition[0]
+            value = condition[2]
 
             if isinstance(field, str):
                 fields = [field]
@@ -776,11 +730,11 @@ class BaseTable(object):
             else:
                 continue
 
-            if operate not in SQL_QUERY_OPERATE_VALUES:
+            if not QOP.have_op(operate):
                 continue
                 # raise Exception("未知的操作符'{operate}'".format(operate=operate))
 
-            if operate == SQL_OR:
+            if operate == QOP.OR:
                 if operate_or_count == 0:
                     operate_or_count += 2
                 else:

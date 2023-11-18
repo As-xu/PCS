@@ -11,6 +11,8 @@ class VideoController(BaseController):
     def query_all_video(self, query_condition):
         qc = query_condition.get('query_params') or []
         sc = Sc.parse2sc(qc)
+        if not sc.valid:
+            return Response.error(sc.invalid_msg)
 
         video_t = self.get_table_obj('VideoTable')
         row_count, user_result = video_t.paginate_query(sc)
@@ -21,14 +23,14 @@ class VideoController(BaseController):
         video_t = self.get_table_obj('VideoTable')
         video_detail_t = self.get_table_obj('VideoDetailTable')
 
-        sc = Sc([("id", "=", video_id)])
+        sc = Sc([("=", "id", video_id)])
         video_result = video_t.query(sc)
         if not video_result:
             return Response.error("没有获取到视频信息")
 
         video_data = video_result[0]
 
-        sc = Sc([("video_id", "=", video_id)])
+        sc = Sc([( "=", "video_id", video_id)])
         video_detail_result = video_detail_t.query(sc)
         video_data["video_details"] = video_detail_result
 
@@ -38,7 +40,7 @@ class VideoController(BaseController):
         video_detail_id = query_data.get("video_detail_id")
         t = self.get_table_obj('VideoDetailTable')
 
-        sc = Sc([("id", "=", video_detail_id)])
+        sc = Sc([("=", "id", video_detail_id)])
         video_detail_result = t.query(sc)
         if not video_detail_result:
             return Response.error("没有获取到视频明细信息")
@@ -57,7 +59,7 @@ class VideoController(BaseController):
 
         video_id = update_data.pop("id", None)
 
-        sc = Sc([("id", "=", video_id)])
+        sc = Sc([("=", "id", video_id)])
         t.write(update_data, sc)
 
         return Response.success()

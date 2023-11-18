@@ -1,81 +1,95 @@
-from pcs.common.sql_operator import *
-from pcs.common.errors import InvalidScError
+from pcs.common.common_const import QOP
+from pcs.common.errors import InvalidQueryConditionError
 import logging
 
 logger = logging.getLogger(__name__)
 
+__all__ = ['Sc']
 
-class Sc:
-    def __init__(self, condition: list):
+class SqlCondition:
+    def __init__(self, condition: list, raise_error=True):
         self.__condition = condition
-        self.valid = True
-        self.invalid_msg = None
-        self.check_valid()
+        self.__valid = True
+        self.__invalid_list = []
+        self.check_valid(raise_error)
 
     @classmethod
     def parse2sc(cls, parse_condition):
-        condition = []
-        return cls(condition)
+        return cls(parse_condition, False)
 
     @property
     def condition(self):
-        return self.__switch2complete()
+        return self.__condition
 
-    def add_condition(self, condition):
-        self.__condition.append(condition)
+    @property
+    def valid(self):
+        return self.__valid
+
+    @property
+    def invalid_msg(self):
+        return "" if self.valid else "查询条件存在异常"
+
+    @property
+    def all_invalid_msg(self):
+        msgs = []
+        for invalid_item in self.__invalid_list:
+            msgs.append("[{}]:{}".format(":".join(invalid_item[0]), invalid_item[1]))
+
+        return "" if self.valid else "\n".join(msgs)
 
     def add_conditions(self, conditions):
         self.__condition.extend(conditions)
-
-    def __switch2complete(self):
         self.check_valid()
 
-        complete_conditions = []
-        for condition in self.__condition:
-            if condition == SQL_OR:
-                condition = (SQL_OR, SQL_OR, SQL_OR)
-
-            if len(condition) == 2:
-                condition = (condition[0], condition[1], "")
-
-            complete_conditions.append({
-                SQL_QUERY_FIELD: condition[0],
-                SQL_QUERY_OPERATE: condition[1],
-                SQL_QUERY_VALUE: condition[2],
-            })
-
-        return complete_conditions
-
     def check_valid(self, raise_error=True):
+        self.__invalid_list = []
+        self.__valid = True
+
         for condition in self.__condition:
-            if condition == SQL_OR:
-                condition = (SQL_OR, SQL_OR, SQL_OR)
+            self.__check_condition(condition)
 
-            if not isinstance(condition, tuple):
-                self.valid = False
-                self.invalid_msg = '查询条件{0}}必须是元组'.format(str(condition))
-
-            if len(condition) == 2:
-                field = condition[0]
-                operate = condition[1]
-                if operate not in [SQL_NULL, SQL_NOTNULL]:
-                    self.valid = False
-                    self.invalid_msg = "查询条件'{0}'至少三个数据".format(operate)
-                condition = (field, operate, "")
-
-            if len(condition) != 3:
-                self.valid = False
-                self.invalid_msg = '查询条件的形式是({0}, {1}, {2})'.format(SQL_QUERY_FIELD, SQL_QUERY_OPERATE, SQL_QUERY_VALUE)
-
-            operate = condition[1]
-            if operate not in SQL_QUERY_OPERATE_VALUES:
-                self.valid = False
-                self.invalid_msg = "不支持的操作符'{0}'".format(operate)
-
-        if raise_error and not self.valid:
-            raise InvalidScError(self.invalid_msg)
+        if raise_error and not self.__valid:
+            raise InvalidQueryConditionError(self.all_invalid_msg)
 
         return self.valid, self.invalid_msg
 
+    def __check_condition(self, condition):
+        if not isinstance(condition, (tuple, list)) and not condition:
+            self.__valid = False
+            self.__invalid_list.append(((str(condition),), '查询条件必须是元组或者列表'))
+            return
+
+        if condition[0] == QOP.OR:
+            for c in condition[1:]:
+                self.__check_condition(c)
+
+        if len(condition) == 2:
+            operate = condition[0]
+            field = condition[1]
+            if operate not in (QOP.NULL, QOP.NOTNULL):
+                self.__valid = False
+                self.__invalid_list.append((condition, "二元查询条件的数据格式异常"))
+            condition = (operate, field, "")
+        elif len(condition) != 3:
+            self.__valid = False
+            self.__invalid_list.append((condition, "查询条件的数据格式异常"))
+
+        operate = condition[0]
+        field = condition[1]
+        value = condition[2]
+        if not QOP.have_op(operate):
+            self.__valid = False
+            self.__invalid_list.append((condition, "异常的查询操作符"))
+
+        if not isinstance(value, str):
+            self.__valid = False
+            self.__invalid_list.append((condition, "查询条件的值必须是字符串"))
+
+        if not isinstance(field, str):
+            self.__valid = False
+            self.__invalid_list.append((condition, "查询条件的值必须是字符串"))
+
     def __str__(self):
         return ",".join(str(c) for c in self.__condition)
+
+Sc = SqlCondition

@@ -18,7 +18,7 @@ class UserController(BaseController):
         user_t = self.get_table_obj('UserTable')
         user_login_t = self.get_table_obj('UserLoginTable')
 
-        sc = Sc([("name", "=", username)])
+        sc = Sc([("=", "name", username)])
         user_result = user_t.query(sc, fields=["id", "password"])
         if not user_result:
             return Response.error("没有此用户'{0}'".format(username))
@@ -48,7 +48,7 @@ class UserController(BaseController):
         phone = request_data.get("phone") or ""
         email = request_data.get("email") or ""
 
-        sc = Sc([("name", "=", username)])
+        sc = Sc([("=", "name", username)])
         user_result = user_t.query(sc, fields=["id", "password"])
         if user_result:
             return Response.error("已存在相同用户名")

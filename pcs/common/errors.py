@@ -11,7 +11,7 @@ class DBError(BaseError):
     )
 
 
-class InvalidScError(DBError):
+class InvalidQueryConditionError(DBError):
     """非法的SQL条件"""
     code = 561
     description = (

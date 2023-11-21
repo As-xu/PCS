@@ -70,12 +70,6 @@ class BaseTable(object):
         return ''
 
     @property
-    def table_field_sql(self):
-        if self.db_type == DBType.Postgresql.value:
-            return '"'
-        return ''
-
-    @property
     def like_operate(self):
         if self.db_type == DBType.Postgresql.value:
             return 'ilike'
@@ -83,13 +77,13 @@ class BaseTable(object):
 
     @property
     def regex_operate(self):
-        if self.db_type == DBType.Postgresql.value:
+        if self.db_type == DBType.MySql.value:
             return 'regexp'
         return '~'
 
     @property
     def not_regex_operate(self):
-        if self.db_type == 'regexp':
+        if self.db_type == DBType.MySql.value:
             return 'not regexp'
         return '!~'
 
@@ -169,9 +163,7 @@ class BaseTable(object):
         return self._paginate_query(sql_str, params=params, page_index=page_index, page_size=page_size)
 
     def _paginate_query(self, sql_str, params=None, page_index=1, page_size=20):
-        query_row_count_sql = """select count(1) row_count 
-              from ({0}) t
-             where 1=1
+        query_row_count_sql = """select count(1) row_count from ({0}) t where 1=1
         """.format(sql_str)
 
         rows = self.__execute(query_row_count_sql, params=params)
@@ -602,10 +594,7 @@ class BaseTable(object):
 
         params.extend(where_params)
 
-        update_sql = """update {table_name}
-               set {set_sql}
-             where 1=1
-                   {where_sql}
+        update_sql = """update {table_name} set {set_sql} where 1=1 {where_sql}
         """.format(
             table_name=self.get_table_name_sql(),
             set_sql=','.join(set_sql_list),
@@ -676,10 +665,8 @@ class BaseTable(object):
     def _generate_delete_sql(self, condition):
         condition_sql, paras = self.__generate_condition_sql(condition)
 
-        delete_sql = """delete from {table_name}
-         where 1= 1
-         {condition_sql}
-                """.format(
+        delete_sql = """delete from {table_name} where 1 = 1 {condition_sql}
+        """.format(
             table_name=self.table_name,
             condition_sql=condition_sql,
         )
@@ -710,107 +697,86 @@ class BaseTable(object):
     def __generate_condition_sql(self, sc):
         conditions = self.__do_special_query_condition(sc.condition)
 
-        like_operate = self.like_operate
-        regex_operate = self.regex_operate
-        not_regex_operate = self.not_regex_operate
+        sub_sql_list = []
+        params = []
+        for c in conditions:
+            sub_sql_str, sub_params = self.__transform_condition_item_sql(c)
+            sub_sql_list.append(sub_sql_str)
+            params.extend(sub_params)
 
-        sql_condition_list = []
-        sql_condition_value_list = []
-        operate_or_count = 0
-        operate_or_used_count = 0
-        for condition in conditions:
-            field = condition[1]
-            operate = condition[0]
-            value = condition[2]
+        sql_str = "and ( " + " and ".join(sub_sql_list) + " ) " if sub_sql_list else ""
 
-            if isinstance(field, str):
-                fields = [field]
-            elif isinstance(field, list):
-                fields = field
+        return sql_str, tuple(params)
+
+    def __transform_condition_item_sql(self, condition_item):
+        sql_str, params = "", []
+        operate = condition_item[0]
+        if operate == QOP.OR:
+            sub_sql_list = []
+            for c in condition_item[1:]:
+                sub_sql_str, sub_params =  self.__transform_condition_item_sql(c)
+                sub_sql_list.append(sub_sql_str)
+                params.extend(sub_params)
+
+            return " ( " + " or ".join(sub_sql_list) + " ) ", params
+        elif isinstance(condition_item[0], (tuple, list)):
+            sub_sql_list = []
+            for c in condition_item:
+                sub_sql_str, sub_params =  self.__transform_condition_item_sql(c)
+                sub_sql_list.append(sub_sql_str)
+                params.extend(sub_params)
+
+            return " ( " + " and ".join(sub_sql_list) + " ) ", params
+        else:
+            if len(condition_item) == 2:
+                field = condition_item[1]
+                value = ""
+            elif len(condition_item) == 3:
+                field = condition_item[1]
+                value = condition_item[2]
             else:
-                continue
+                return sql_str, params
 
             if not QOP.have_op(operate):
-                continue
-                # raise Exception("未知的操作符'{operate}'".format(operate=operate))
+                return sql_str, params
 
-            if operate == QOP.OR:
-                if operate_or_count == 0:
-                    operate_or_count += 2
-                else:
-                    operate_or_count += 1
-                continue
-
+            field_str = self.get_table_field_sql(field)
             lower_operate = operate.lower()
-            fields_sql_list = []
-            for f in fields:
-                field_str = self.get_table_field_sql(f)
-                if 'l_like' == lower_operate:
-                    operate_str = like_operate
-                    sql_condition_value_list.append("%" + value)
-                elif lower_operate in ('like', 'ilike'):
-                    operate_str = like_operate
-                    sql_condition_value_list.append("%" + value + "%")
-                elif 'r_like' == lower_operate:
-                    operate_str = like_operate
-                    sql_condition_value_list.append(value + "%")
-                elif lower_operate in ('not like', 'not ilike'):
-                    operate_str = ' not ' + like_operate
-                    sql_condition_value_list.append("%" + value + "%")
-                elif 're' == lower_operate:
-                    operate_str = regex_operate
-                    sql_condition_value_list.append(value)
-                elif 'not re' == lower_operate:
-                    operate_str = not_regex_operate
-                    sql_condition_value_list.append(value)
-                elif 'null' == lower_operate:
-                    operate_str = 'is null'
-                elif 'not null' == lower_operate:
-                    operate_str = 'is not null'
-                elif lower_operate in ('in', 'not in'):
-                    operate_str = lower_operate
-                    if isinstance(value, str):
-                        value = eval(value)
-                    sql_condition_value_list.append(tuple(value))
-                else:
-                    operate_str = operate
-                    sql_condition_value_list.append(value)
 
-                fields_sql_list.append(" {0} {1} %s ".format(field_str, operate_str))
-
-            if operate_or_count > 0 and operate_or_used_count == 0:
-                sql_condition = " And (("
-            elif operate_or_count > 0:
-                sql_condition = " Or ("
+            if QOP.L_LIKE == lower_operate:
+                operate_str = self.like_operate
+                params.append("%" + value)
+            elif QOP.R_LIKE == lower_operate:
+                operate_str = self.like_operate
+                params.append(value + "%")
+            elif lower_operate in (QOP.LIKE, QOP.ILIKE):
+                operate_str = self.like_operate
+                params.append("%" + value + "%")
+            elif lower_operate in (QOP.NOT_ILIKE, QOP.NOT_LIKE):
+                operate_str = 'not' + self.like_operate
+                params.append("%" + value + "%")
+            elif QOP.RE == lower_operate:
+                operate_str = self.regex_operate
+                params.append(value)
+            elif QOP.NOT_RE == lower_operate:
+                operate_str = self.not_regex_operate
+                params.append(value)
+            elif QOP.NULL == lower_operate:
+                operate_str = 'is null'
+            elif QOP.NOTNULL == lower_operate:
+                operate_str = 'is not null'
+            elif lower_operate in (QOP.IN, QOP.NOT_IN):
+                operate_str = lower_operate
+                if isinstance(value, str):
+                    value = json.dumps(value)
+                params.append(tuple(value))
             else:
-                sql_condition = " And ("
+                operate_str = operate
+                params.append(value)
 
-            sql_condition += " or ".join(fields_sql_list)
-            sql_condition += ")"
+            sql_str = " {0} {1} %s ".format(field_str, operate_str)
 
-            if operate_or_count > 0:
-                operate_or_used_count += 1
-                operate_or_count -= 1
-
-                if operate_or_count == 0:
-                    operate_or_used_count = 0
-
-                    sql_condition += ")"
-
-            sql_condition_list.append(sql_condition)
-
-        if operate_or_count > 0:
-            sql_condition_list.append(")")
-
-        condition_sql = ''
-        paras = None
-
-        if sql_condition_list:
-            condition_sql = str.join(' ', sql_condition_list)
-            paras = tuple(sql_condition_value_list)
-
-        return condition_sql, paras
-
+            return sql_str, params
 
 class ExecuteState:
     def __init__(self):

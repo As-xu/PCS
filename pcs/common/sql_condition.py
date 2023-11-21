@@ -62,6 +62,10 @@ class SqlCondition:
         if condition[0] == QOP.OR:
             for c in condition[1:]:
                 self.__check_condition(c)
+            return
+        elif isinstance(condition[0], (tuple, list)):
+            for c in condition:
+                self.__check_condition(c)
 
         if len(condition) == 2:
             operate = condition[0]

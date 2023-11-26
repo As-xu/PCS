@@ -12,9 +12,9 @@ def create_app():
     args = sys.argv[1:]
     config = parse_config(args)
 
-    app = BaseFlaskApp(__name__, template_folder='templates')
     try:
         load_dotenv()
+        app = BaseFlaskApp(__name__, template_folder='templates')
 
         if config:
             app.config.from_mapping(config)

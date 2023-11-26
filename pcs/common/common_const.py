@@ -8,7 +8,6 @@ class JsonCommonKey:
     ORDER_BY = "order"
     GROUP_BY = "group"
 
-
 class QueryOperator:
     EQ = '='
     NEQ = '!='
@@ -42,6 +41,11 @@ class QueryOperator:
     @classmethod
     def have_op(cls, op):
         return any(v==op for k, v in QueryOperator.__dict__.items() if k.isupper())
+
+
+DATE_FORMAT = "%Y-%m-%d"
+TIME_FORMAT = "%H:%M:%S"
+DATETIME_FORMAT = "%s %s" % (DATE_FORMAT, TIME_FORMAT)
 
 SQL_TYPE_MAP = {
     "int": "INTEGER", "float": "NUMERIC", "bool": "BOOLEAN", "datetime": "TIMESTAMP", "date": "DATE", "json": "JSON",

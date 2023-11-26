@@ -1,5 +1,5 @@
 import sys
-from pcs.extensions.celery import app
+from pcs.celery_app import app
 
 if __name__ == '__main__':
     argv = sys.argv

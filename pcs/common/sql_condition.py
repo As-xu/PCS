@@ -58,14 +58,14 @@ class SqlCondition:
             self.__valid = False
             self.__invalid_list.append(((str(condition),), '查询条件必须是元组或者列表'))
             return
-
-        if condition[0] == QOP.OR:
+        elif condition[0] == QOP.OR:
             for c in condition[1:]:
                 self.__check_condition(c)
             return
         elif isinstance(condition[0], (tuple, list)):
             for c in condition:
                 self.__check_condition(c)
+            return
 
         if len(condition) == 2:
             operate = condition[0]
@@ -85,7 +85,7 @@ class SqlCondition:
             self.__valid = False
             self.__invalid_list.append((condition, "异常的查询操作符"))
 
-        if not isinstance(value, str):
+        if not isinstance(value, (str, bool, int, float)):
             self.__valid = False
             self.__invalid_list.append((condition, "查询条件的值必须是字符串"))
 

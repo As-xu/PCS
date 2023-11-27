@@ -1,9 +1,9 @@
 from pcs.celery_app import app
-import logging
+from celery.utils.log import get_task_logger
 
-logger = logging.getLogger(__name__)
+logger = get_task_logger(__name__)
 
-@app.task
+@app.task(name='tasks.video_add')
 def video_add():
-    logger.info("execute add")
+    logger.warning("execute add")
     return 1+1

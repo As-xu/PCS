@@ -3,6 +3,7 @@ from pcs.common.base import BaseController
 from pcs.common.sql_condition import Sc
 from pcs.common.response import Response
 from pcs.video.tasks import video_add
+from pcs.celery_app import ad_add
 
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,8 @@ class VideoController(BaseController):
         video_t = self.get_table_obj('VideoTable')
         row_count, user_result = video_t.paginate_query(sc)
 
-        video_add.delay()
+        a = video_add.delay()
+        b = ad_add.delay()
 
         return Response.pagination(user_result, row_count)
 

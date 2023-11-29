@@ -1,0 +1,9 @@
+celery==5.3.0
+Flask==2.3.2
+Flask==2.0.3
+Flask_JWT_Extended==4.5.2
+passlib==1.7.4
+psycopg2==2.9.5
+pytz==2023.3
+six==1.16.0
+tzlocal==5.0.1

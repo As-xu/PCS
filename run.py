@@ -3,8 +3,8 @@ from gevent.pywsgi import WSGIServer
 from gevent.pywsgi import LoggingLogAdapter
 import logging
 
+app = create_app()
 if __name__ == '__main__':
-    app = create_app()
     if app.env == 'development':
         app.run()
     else:

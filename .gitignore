@@ -26,6 +26,7 @@ log/
 *.sqllite
 *.swp
 *.cfg
+.env
 
 
 .local

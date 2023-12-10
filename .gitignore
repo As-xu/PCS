@@ -44,3 +44,4 @@ env
 venv*
 tmp
 
+gunicron_conf.py

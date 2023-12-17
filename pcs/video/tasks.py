@@ -7,7 +7,5 @@ logger = get_task_logger(__name__)
 
 @app.task(name='tasks.video_add')
 def video_add():
-    logger.error("execute add")
-    time.sleep(3)
-    logger.error("execute add1")
+
     return 1+1

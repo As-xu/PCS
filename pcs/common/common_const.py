@@ -1,4 +1,6 @@
-__all__ = ['QOP', 'JCK', 'SQL_TYPE_MAP']
+__all__ = [
+    'QOP', 'JCK', 'SQL_TYPE_MAP', 'DATE_FORMAT', 'TIME_FORMAT', 'DATETIME_FORMAT', 'MAX_LOG_SIZE'
+]
 
 class JsonCommonKey:
     PAGE_INDEX = "page_index"
@@ -46,6 +48,7 @@ class QueryOperator:
 DATE_FORMAT = "%Y-%m-%d"
 TIME_FORMAT = "%H:%M:%S"
 DATETIME_FORMAT = "%s %s" % (DATE_FORMAT, TIME_FORMAT)
+MAX_LOG_SIZE = 1048576
 
 SQL_TYPE_MAP = {
     "int": "INTEGER", "float": "NUMERIC", "bool": "BOOLEAN", "datetime": "TIMESTAMP", "date": "DATE", "json": "JSON",

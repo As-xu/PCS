@@ -2,6 +2,7 @@ import logging
 from flask import current_app
 from flask_jwt_extended import get_jwt_identity
 from psycopg2.extras import RealDictCursor
+from pcs.common.result import Result
 from pcs.common.base.base_table import BaseTable
 from pcs.common.base.base_flask_app import BaseFlaskApp
 
@@ -54,3 +55,23 @@ class BaseController:
 
     def rollback(self):
         self.conn.rollback()
+
+    def return_res(self, success, msg="", data=None):
+        return Result(success, msg=msg, data=data)
+
+    def return_ok(self, msg="", data=None, log=False):
+        return self.return_res(True, msg=msg, data=data)
+
+    def return_failure(self, msg="", data=None, log=False):
+        if log:
+            f = logging.currentframe()
+            lno, func = "(unknown file)", "(unknown function)"
+            if f is not None:
+                lno, func =  f.f_lineno, f.f_code.co_name
+            message = "%s \n%s line:%s MSG:%s \n%s" % ("*" * 20, func, lno, msg, "*" * 20)
+            logger.info(message)
+
+        return self.return_res(False, msg=msg, data=data)
+
+    def return_data(self, data=None):
+        return self.return_res(False, msg="", data=data)

@@ -4,6 +4,7 @@ from psycopg2 import extensions
 from psycopg2 import extras
 from pcs.common.common_const import JCK, SQL_TYPE_MAP, QOP
 from pcs.common.errors import DBCreateError, DBQueryError, DBDeleteError, DBUpdateError
+from pcs.common.common_const import MAX_LOG_SIZE
 import logging
 import datetime
 import json
@@ -136,14 +137,27 @@ class BaseTable(object):
                                                    order_by=order_by, count=count, distinct=distinct)
         if not sql_str:
             error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > 1048576:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+            if len(error_info) > MAX_LOG_SIZE:
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBQueryError(error_info)
 
         return self._query(sql_str, params=params)
+
+    def query_exists(self, sc):
+        # 待完成
+        sql_str, params = self._generate_query_exists_sql(sc)
+        if not sql_str:
+            error_info = """生成SQL失败:{}""".format(str(sc))
+            if len(error_info) > MAX_LOG_SIZE:
+                error_info = error_info[:MAX_LOG_SIZE // 2] + error_info[-MAX_LOG_SIZE // 2:]
+
+            self.exec_state.failure(error_info)
+            raise DBQueryError(error_info)
+
+        return self._query(sql_str, params=params)
+
 
     def _query(self, sql_str, params=None):
         rows = self.__execute(sql_str, params=params)
@@ -153,9 +167,8 @@ class BaseTable(object):
         sql_str, params = self._generate_query_sql(sc, fields=fields, order_by=order_by)
         if not sql_str:
             error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > 1048576:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+            if len(error_info) > MAX_LOG_SIZE:
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBQueryError(error_info)
@@ -189,9 +202,9 @@ class BaseTable(object):
 
         if not insert_sql:
             error_info = """生成SQL失败:{}""".format(str(insert_data))
-            if len(error_info) > 1048576:
+            if len(error_info) > MAX_LOG_SIZE:
                 # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBCreateError(error_info)
@@ -227,9 +240,9 @@ class BaseTable(object):
         insert_sql, params, template = self._generate_batch_insert_sql(insert_data_list)
         if not insert_sql:
             error_info = """生成SQL失败:{}""".format(str(insert_data_list[0]))
-            if len(error_info) > 1048576:
+            if len(error_info) > MAX_LOG_SIZE:
                 # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBCreateError(error_info)
@@ -254,9 +267,9 @@ class BaseTable(object):
 
         if not delete_sql:
             error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > 1048576:
+            if len(error_info) > MAX_LOG_SIZE//2:
                 # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBDeleteError(error_info)
@@ -284,9 +297,9 @@ class BaseTable(object):
         update_sql, params = self._generate_update_sql(update_dict, sc)
         if not update_sql:
             error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > 1048576:
+            if len(error_info) > MAX_LOG_SIZE//2:
                 # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBUpdateError(error_info)
@@ -336,9 +349,9 @@ class BaseTable(object):
                                                                        field_type=field_type)
         if not update_sql:
             error_info = """生成SQL失败:{}""".format(update_data_list[0])
-            if len(error_info) > 1048576:
+            if len(error_info) > MAX_LOG_SIZE//2:
                 # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             self.exec_state.failure(error_info)
             raise DBUpdateError(error_info)
@@ -393,9 +406,9 @@ class BaseTable(object):
             error_info = """执行前失败: 未知异常\n-----sql----------\n{0}\n-----end sql------\n{1}
             """.format(sql_str, exception_info)
         if error_info:
-            if len(error_info) > 1048576:
+            if len(error_info) > MAX_LOG_SIZE:
                 # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:524288] + error_info[-524288:]
+                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
 
             error_info = error_info.strip()
             self.exec_state.failure(error_info)
@@ -476,6 +489,9 @@ class BaseTable(object):
             select_sql = " select count(1) count from ({select_sql}) t".format(select_sql=select_sql)
 
         return select_sql, paras
+
+    def _generate_query_exists_sql(self, sc):
+        return "", tuple()
 
     def __do_special_query_condition(self, conditions):
         # if not conditions:
@@ -798,3 +814,4 @@ class ExecuteState:
     def reset_state(self):
         self.state = DBResultState.SUCCESS.value
         self.error_msg = ""
+

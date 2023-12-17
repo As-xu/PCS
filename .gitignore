@@ -31,7 +31,6 @@ log/
 
 .local
 .cache
-.env
 .envrc
 .vscode
 _build

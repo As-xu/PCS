@@ -39,3 +39,9 @@ def update_info():
     json_data = request.json
     controller = VideoController(request)
     return controller.update_video_info(json_data)
+
+@bp.route('/download_video', methods=["POST"])
+def download_video():
+    json_data = request.json
+    controller = VideoController(request)
+    return controller.download_video(json_data)

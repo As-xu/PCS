@@ -43,4 +43,4 @@ class CommonObjectStatus(BaseEnum):
     Deprecated = 30
     Cancel = 40
     Completed = 50
-    Exceptional = 50
+    Exceptional = 60

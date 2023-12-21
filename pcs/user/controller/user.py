@@ -62,7 +62,7 @@ class UserController(BaseController):
         user_result = user_t.create(user_data)
 
         user_id = user_result.get("id")
-        user_log_t.add_user_log(user_id, LogType.Create.value, "创建用户[{0}]成功".format(username))
+        user_log_t.add_log(user_id, LogType.Create.value, "创建用户[{0}]成功".format(username))
         self.commit()
         return Response.success()
 

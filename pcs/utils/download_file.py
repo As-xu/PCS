@@ -1,4 +1,3 @@
-from pcs.common.result import Result
 from typing import Any
 import m3u8
 
@@ -36,7 +35,7 @@ class M3u8Parser:
 
             all_paths.append({
                 "m3u8_url": seg.absolute_uri,
-                "local_path": temp_path + '/' + self.get_url_last_path(seg.absolute_uri)
+                "local_path": temp_path + '/' + self.get_url_last_path(seg.uri)
             })
 
         for key in playlist.keys:
@@ -44,7 +43,7 @@ class M3u8Parser:
 
             all_paths.append({
                 "m3u8_url": key.absolute_uri,
-                "local_path": temp_path + '/' + self.get_url_last_path(key.absolute_uri)
+                "local_path": temp_path + '/' + self.get_url_last_path(key.uri)
             })
         return all_paths
 

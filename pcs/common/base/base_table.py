@@ -794,6 +794,26 @@ class BaseTable(object):
 
             return sql_str, params
 
+
+class LogTable(BaseTable):
+    def add_log(self, record_id, log_type, log_content):
+        log_data = {
+            "record_id": record_id, "log_type": log_type,  "log_content": log_content, "log_ip": "192.168.3.99"
+        }
+        return self.create(log_data)
+
+    def batch_add_log(self, record_ids, log_type, log_content):
+        logs = [{
+            "record_id": record_id, "log_type": log_type,  "log_content": log_content, "log_ip": "192.168.3.99"
+        } for record_id in record_ids]
+        return self.batch_create(logs)
+
+    def batch_add_record_logs(self, record_logs):
+        for r in  record_logs:
+            r["log_ip"] = "192.168.3.99"
+        return self.batch_create(record_logs)
+
+
 class ExecuteState:
     def __init__(self):
         self.state = DBResultState.SUCCESS.value

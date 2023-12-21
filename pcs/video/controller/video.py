@@ -53,31 +53,36 @@ class VideoController(BaseController):
 
     def add_video(self, create_data):
         t = self.get_table_obj('VideoTable')
+        log_t = self.get_table_obj('VideoLogTable')
         video_name = create_data.get("video_name")
 
-        res = t.query(Sc([("video_name", "=", video_name)]), ["id"])
+        res = t.query(Sc([( "=", "video_name", video_name)]), ["id"])
         if res:
             return Response.error("该视频已存在该" % video_name)
 
-        t.create(create_data)
+        video_id = t.create(create_data)
+        log_t.add_log(video_id, "创建", "创建视频成功")
 
         return Response.success()
 
     def update_video_info(self, update_data):
-        t = self.get_table_obj('VideoTable')
+        video_t = self.get_table_obj('VideoTable')
+        log_t = self.get_table_obj('VideoLogTable')
 
         video_id = update_data.pop("id", None)
+        video_name = update_data.get("video_name") or ""
         if not video_id:
             return Response.error("不存在该视频")
 
-        res = t.query(Sc([("id", "=", video_id)]), ["video_name"])
-        if not res:
-            return Response.error("不存在该视频")
+        if not video_name:
+            return Response.error("视频名称不可未空")
 
-        if res[0]:
+        res = video_t.query(Sc([( "=", "video_name", video_name)]), ["id"])
+        if res and res[0].get("id") != video_id:
+            return Response.error("已存在相同视频")
 
-
-        t.write(update_data, sc)
+        video_t.write(update_data, Sc([( "=", "id", video_id)]))
+        log_t.add_log(video_id, "更新", "更新视频成功")
 
         return Response.success()
 
@@ -85,11 +90,11 @@ class VideoController(BaseController):
         video_name = json_data.get("video_name")
         video_url_list = json_data.get("url_list")
         url_type = json_data.get("url_type")
-        params = json_data.get("params")
+        params = json_data.get("params") or {}
         ignore_exist_url = params.get("ignore_exist_url") or False
 
         download_t = self.get_table_obj('VideoDownloadTable')
-        download_res = download_t.query(Sc([("video_name", "=", video_name)]), ["id", "video_url"])
+        download_res = download_t.query(Sc([( "=", "video_name", video_name)]), ["id", "video_url"])
         if download_res:
             return Response.error("视频[%s]已存在该URL" % video_name)
 
@@ -102,8 +107,10 @@ class VideoController(BaseController):
 
         if url_type == 'm3u8':
             res = self.__m3u8_video_download(video_name, video_url_list, params)
+        elif url_type == 'magnet':
+            res = self.__magnet_video_download(video_name, video_url_list, params)
         else:
-            return Response.error("无法解析该视频类型: " % url_type)
+            return Response.error("无法下载该视频类型: " % url_type)
 
         if not res.success:
             return Response.error(res.msg)
@@ -116,7 +123,7 @@ class VideoController(BaseController):
 
         ignore_failure = params.pop("ignore_failure", False) or False
         for video_url in video_urls:
-            parser = M3u8Parser(video_urls, params)
+            parser = M3u8Parser(video_url, params)
             m3u8_url_details = parser.parse()
             if not m3u8_url_details:
                 if not ignore_failure:
@@ -139,4 +146,7 @@ class VideoController(BaseController):
             ]
             download_m3u8_detail_t.batch_create(download_detail_data)
 
+        return self.return_ok()
+
+    def __magnet_video_download(self, video_name, video_url_list, params):
         return self.return_ok()

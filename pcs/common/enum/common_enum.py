@@ -19,12 +19,13 @@ class ProcessStatus(BaseEnum):
     错误 Error
     跳过 Skip
     """
-    WaitStart = 10
-    Processing = 20
-    Pause = 30
-    Finish = 40
-    Error = 50
-    Skip = 60
+    not_ready = 10
+    WaitStart = 20
+    Processing = 30
+    Pause = 40
+    Finish = 50
+    Error = 60
+    Skip = 70
 
 
 @unique

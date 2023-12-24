@@ -2,6 +2,15 @@ from typing import Any
 import m3u8
 
 
+class M3u8Downloader:
+    def __init__(self, m3u8_url:str, params:Any=None) -> None:
+        self.url = m3u8_url
+        self.params = params
+
+    def download(self):
+        async with aiohttp.ClientSession() as session:
+
+
 class M3u8Parser:
     def __init__(self, m3u8_url:str, params:Any=None) -> None:
         self.url = m3u8_url

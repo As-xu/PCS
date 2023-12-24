@@ -132,9 +132,8 @@ class VideoController(BaseController):
 
             download_data = {
                 "video_name": video_name, "video_url": video_url, "download_status": ProcessStatus.WaitStart.value,
-                "parse_status": ProcessStatus.WaitStart.value, "video_url_type": 'm3u8'
+                "parse_status": ProcessStatus.WaitStart.value, "url_type": 'm3u8'
             }
-
             download_t.create(download_data)
 
             download_detail_data = [
@@ -150,3 +149,25 @@ class VideoController(BaseController):
 
     def __magnet_video_download(self, video_name, video_url_list, params):
         return self.return_ok()
+
+    def manual_video_download(self, json_data):
+        vd_id = json_data("id")
+        download_t = self.get_table_obj('VideoDownloadTable')
+
+        res = download_t.query(Sc([("=", "id", vd_id)]))
+
+        if not res:
+            return Response.error("没有id的数据")
+
+        data = res[0]
+        url_type = data[0].get("url_type")
+        download_status = data[0].get("download_status")
+
+        if download_status != ProcessStatus.WaitStart.value:
+            return Response.error("链接不可下载")
+
+        if url_type == 'm3u8':
+
+
+
+

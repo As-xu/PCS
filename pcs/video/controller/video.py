@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class VideoController(BaseController):
     def query_all_video(self, query_condition):
+        """查询所有视频"""
         qc = query_condition.get('query_params') or []
         sc = Sc.parse2sc(qc)
         if not sc.valid:
@@ -23,6 +24,7 @@ class VideoController(BaseController):
         return Response.pagination(user_result, row_count)
 
     def query_video_info(self, query_data):
+        """视频的具体信息"""
         video_id = query_data.get("video_id")
         video_t = self.get_table_obj('VideoTable')
         video_detail_t = self.get_table_obj('VideoDetailTable')
@@ -41,6 +43,7 @@ class VideoController(BaseController):
         return Response.json_data(video_data)
 
     def query_video_detail(self, query_data):
+        """该视频的明细"""
         video_detail_id = query_data.get("video_detail_id")
         t = self.get_table_obj('VideoDetailTable')
 
@@ -52,6 +55,7 @@ class VideoController(BaseController):
         return Response.json_data(video_detail_result[0])
 
     def add_video(self, create_data):
+        """添加视频"""
         t = self.get_table_obj('VideoTable')
         log_t = self.get_table_obj('VideoLogTable')
         video_name = create_data.get("video_name")
@@ -66,6 +70,7 @@ class VideoController(BaseController):
         return Response.success()
 
     def update_video_info(self, update_data):
+        """更新视频信息"""
         video_t = self.get_table_obj('VideoTable')
         log_t = self.get_table_obj('VideoLogTable')
 
@@ -87,6 +92,7 @@ class VideoController(BaseController):
         return Response.success()
 
     def download_video(self, json_data):
+        """解析并下载视频按钮"""
         video_name = json_data.get("video_name")
         video_url_list = json_data.get("url_list")
         url_type = json_data.get("url_type")
@@ -118,6 +124,7 @@ class VideoController(BaseController):
         return Response.success()
 
     def __m3u8_video_download(self, video_name, video_urls, params):
+        """下载m3u8"""
         download_m3u8_detail_t = self.get_table_obj('VideoDownloadM3u8DetailsTable')
         download_t = self.get_table_obj('VideoDownloadTable')
 
@@ -148,9 +155,11 @@ class VideoController(BaseController):
         return self.return_ok()
 
     def __magnet_video_download(self, video_name, video_url_list, params):
+        """下载磁力"""
         return self.return_ok()
 
     def manual_video_download(self, json_data):
+        """手动下载视频"""
         vd_id = json_data("id")
         download_t = self.get_table_obj('VideoDownloadTable')
 
@@ -167,7 +176,7 @@ class VideoController(BaseController):
             return Response.error("链接不可下载")
 
         if url_type == 'm3u8':
-
+            video_add()
 
 
 

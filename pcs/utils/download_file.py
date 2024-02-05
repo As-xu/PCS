@@ -1,5 +1,6 @@
 from typing import Any
 import m3u8
+import aiohttp
 
 
 class M3u8Downloader:
@@ -9,6 +10,7 @@ class M3u8Downloader:
 
     def download(self):
         async with aiohttp.ClientSession() as session:
+            pass
 
 
 class M3u8Parser:

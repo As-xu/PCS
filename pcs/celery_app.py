@@ -3,7 +3,6 @@ from celery import Celery
 app = Celery('pcs_celery')
 
 class BaseConfig:
-
     broker_connection_retry_on_startup = True
 
 

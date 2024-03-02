@@ -23,7 +23,7 @@ def user_logout():
     return c.user_logout()
 
 
-@bp.route('/register', methods=["POST", "GET"], no_verify=True)
+@bp.route('/registerUser', methods=["POST", "GET"], no_verify=True)
 def user_register():
     json_data = request.json
     if request.method == 'GET':
@@ -33,15 +33,21 @@ def user_register():
         return controller.user_register(json_data)
 
 
-@bp.route('/change_password', methods=["POST", "GET"])
+@bp.route('/changePasswd', methods=["POST", "GET"])
 def user_change_password():
     json_data = request.json
     c = UserController(request)
     return c.change_password(json_data)
 
 
-@bp.route('/query_user_info', methods=["POST", "GET"])
+@bp.route('/getUserInfo', methods=["POST", "GET"])
 def query_user_info():
     json_data = request.json
     c = UserController(request)
     return c.query_user_info(json_data)
+
+
+@bp.route('/getRouters', methods=["POST", "GET"])
+def query_user_routers():
+    json_data = request.json
+    return UserController(request).query_user_routers(json_data)

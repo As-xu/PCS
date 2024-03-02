@@ -8,7 +8,9 @@ __all__ = ['Sc']
 
 class SqlCondition:
     def __init__(self, condition: list, raise_error=True):
-        self.__condition = condition
+        self.__condition = []
+        if condition:
+            self.__condition = condition
         self.__valid = True
         self.__invalid_list = []
         self.check_valid(raise_error)

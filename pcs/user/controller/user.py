@@ -15,8 +15,8 @@ class UserController(BaseController):
     def user_login(self, request_data):
         username = request_data.get("user_name")
         password = request_data.get("password")
-        user_t = self.get_table_obj('UserTable')
-        user_login_t = self.get_table_obj('UserLoginTable')
+        user_t = self.get_table('UserTable')
+        user_login_t = self.get_table('UserLoginTable')
 
         sc = Sc([("=", "name", username)])
         user_result = user_t.query(sc, fields=["id", "password"])
@@ -27,7 +27,7 @@ class UserController(BaseController):
         hash_password = user_info.get("password")
         user_id = user_info.get("id")
         is_valid = check_password(password, hash_password)
-        if is_valid:
+        if not is_valid:
             return Response.error("用户名或者密码错误")
 
         user_login_t.user_login(user_id)
@@ -40,8 +40,8 @@ class UserController(BaseController):
 
     def user_register(self, request_data):
         self.close_autocommit()
-        user_t = self.get_table_obj('UserTable')
-        user_log_t = self.get_table_obj('UserLogTable')
+        user_t = self.get_table(self.tables.UserTable)
+        user_log_t = self.get_table(self.tables.UserLogTable)
 
         username = request_data.get("user_name")
         password = request_data.get("password")
@@ -71,14 +71,103 @@ class UserController(BaseController):
             response = Response.success("尚未登录")
             unset_access_cookies(response)
             return response
-        user_login_t = self.get_table_obj('UserLoginTable')
+        user_login_t = self.get_table(self.tables.UserLoginTable)
         user_login_t.user_logout()
         response = Response.success()
         unset_access_cookies(response)
         return response
 
     def query_user_info(self, json_data):
-        return Response.success()
+        """
+        获取用户信息
+        :param json_data:
+        :return:
+        """
+        # 假数据
+        fake_data = {
+            "permissions": [
+                "*:*:*"
+            ],
+            "roles": [
+                "admin"
+            ],
+            "user": {
+                "createBy": "admin",
+                "createTime": "2023-04-23 16:11:38",
+                "updateBy": None,
+                "updateTime": None,
+                "remark": "管理员",
+                "userId": 1,
+                "deptId": 103,
+                "userName": "admin",
+                "nickName": "若依",
+                "email": "ry@163.com",
+                "phonenumber": "15888888888",
+                "sex": "1",
+                "avatar": "",
+                "password": "$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2",
+                "status": "0",
+                "delFlag": "0",
+                "loginIp": "112.41.1.104",
+                "loginDate": "2024-02-29T23:47:29.000+08:00",
+                "dept": {"createBy": None,
+                    "createTime": None,
+                    "updateBy": None,
+                    "updateTime": None,
+                    "remark": None,
+                    "deptId": 103,
+                    "parentId": 101,
+                    "ancestors": "0,100,101",
+                    "deptName": "研发部门",
+                    "orderNum": 1,
+                    "leader": "若依",
+                    "phone": None,
+                    "email": None,
+                    "status": "0",
+                    "delFlag": None,
+                    "parentName": None,
+                    "children": []
+                },
+                "roles": [
+                    {
+                        "createBy": None,
+                        "createTime": None,
+                        "updateBy": None,
+                        "updateTime": None,
+                        "remark": None,
+                        "roleId": 1,
+                        "roleName": "超级管理员",
+                        "roleKey": "admin",
+                        "roleSort": 1,
+                        "dataScope": "1",
+                        "menuCheckStrictly": False,
+                        "deptCheckStrictly": False,
+                        "status": "0",
+                        "delFlag": None,
+                        "flag": False,
+                        "menuIds": None,
+                        "deptIds": None,
+                        "permissions": None,
+                        "admin": True
+                    }
+            ],
+            }
+        }
+
+        return Response.json_data(fake_data)
+
+    def query_user_routers(self, json_data):
+        """
+        获取菜单信息
+        :param json_data:
+        :return:
+        """
+        user_id = json_data.get("user_id")
+        menu_t = self.get_table(self.tables.SystemMenuTable)
+        sc = Sc([])
+        menu_result = menu_t.query(sc)
+        return Response.json_data(menu_result)
+
 
     def change_password(self, json_data):
         return Response.success()

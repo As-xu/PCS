@@ -8,7 +8,7 @@ class M3u8Downloader:
         self.url = m3u8_url
         self.params = params
 
-    def download(self):
+    async def download(self):
         async with aiohttp.ClientSession() as session:
             pass
 
@@ -40,7 +40,7 @@ class M3u8Parser:
 
     def get_file_urls_and_paths(self, playlist) -> object:
         all_paths = []
-        temp_path = 'F:/data'
+        temp_path = '.data'
         for seg in playlist.segments:
             if not seg: break
 

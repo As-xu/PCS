@@ -1,5 +1,5 @@
-from staring.triggers.base import BaseTrigger
-from staring.util import obj_to_ref, ref_to_obj
+from ..ringstar.triggers.base import BaseTrigger
+from ..ringstar.util import obj_to_ref, ref_to_obj
 
 
 class BaseCombiningTrigger(BaseTrigger):

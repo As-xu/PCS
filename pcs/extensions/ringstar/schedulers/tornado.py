@@ -3,8 +3,8 @@ from __future__ import absolute_import
 from datetime import timedelta
 from functools import wraps
 
-from staring.schedulers.base import BaseScheduler
-from staring.util import maybe_ref
+from ..ringstar.schedulers.base import BaseScheduler
+from ..ringstar.util import maybe_ref
 
 try:
     from tornado.ioloop import IOLoop

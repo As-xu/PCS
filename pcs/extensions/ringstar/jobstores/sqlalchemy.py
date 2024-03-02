@@ -1,8 +1,8 @@
 from __future__ import absolute_import
 
-from staring.jobstores.base import BaseJobStore, JobLookupError, ConflictingIdError
-from staring.util import maybe_ref, datetime_to_utc_timestamp, utc_timestamp_to_datetime
-from staring.job import Job
+from ringstar.jobstores.base import BaseJobStore, JobLookupError, ConflictingIdError
+from ringstar.util import maybe_ref, datetime_to_utc_timestamp, utc_timestamp_to_datetime
+from ringstar.job import Job
 
 try:
     import cPickle as pickle

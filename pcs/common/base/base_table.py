@@ -3,7 +3,7 @@ from psycopg2.errors import Error as PgError
 from psycopg2 import extensions
 from psycopg2 import extras
 from pcs.common.common_const import JCK, SQL_TYPE_MAP, QOP
-from pcs.common.errors import DBCreateError, DBQueryError, DBDeleteError, DBUpdateError
+from pcs.common.errors import DBCreateError, DBQueryError, DBDeleteError, DBUpdateError, GenerateSQLError
 from pcs.common.common_const import MAX_LOG_SIZE
 import logging
 import datetime
@@ -19,11 +19,11 @@ class TableInfo:
 
 class Tables:
     def __init__(self):
-        self.__tables = {}
+        self.__table_names = {}
 
     @property
-    def tables(self):
-        return self.__tables
+    def table_names(self):
+        return self.__table_names
 
     def add_table(self, table_class):
         if not issubclass(table_class, BaseTable):
@@ -31,10 +31,11 @@ class Tables:
 
         if self.exists_table(table_class.__name__):
             return None
-        self.__tables[table_class.__name__] = table_class
+
+        self.__setattr__(table_class.__name__, table_class)
 
     def exists_table(self, table_name):
-        if table_name in self.__tables.keys():
+        if table_name in self.__table_names:
             return True
 
         return False
@@ -43,7 +44,7 @@ class Tables:
         if not self.exists_table(table_name):
             raise Exception("不存在此Table %s" % table_name)
 
-        table_class = self.__tables.get(table_name)
+        table_class = getattr(self, table_name)
         return table_class(controller)
 
 
@@ -136,12 +137,7 @@ class BaseTable(object):
         sql_str, params = self._generate_query_sql(sc, fields=fields, offset=offset, limit=limit,
                                                    order_by=order_by, count=count, distinct=distinct)
         if not sql_str:
-            error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > MAX_LOG_SIZE:
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBQueryError(error_info)
+            self.__handel_generate_sql_error(str(sc))
 
         return self._query(sql_str, params=params)
 
@@ -149,12 +145,7 @@ class BaseTable(object):
         # 待完成
         sql_str, params = self._generate_query_exists_sql(sc)
         if not sql_str:
-            error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > MAX_LOG_SIZE:
-                error_info = error_info[:MAX_LOG_SIZE // 2] + error_info[-MAX_LOG_SIZE // 2:]
-
-            self.exec_state.failure(error_info)
-            raise DBQueryError(error_info)
+            self.__handel_generate_sql_error(str(sc))
 
         return self._query(sql_str, params=params)
 
@@ -166,12 +157,7 @@ class BaseTable(object):
     def paginate_query(self, sc, page_index=1, page_size=20, fields=None, order_by=None):
         sql_str, params = self._generate_query_sql(sc, fields=fields, order_by=order_by)
         if not sql_str:
-            error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > MAX_LOG_SIZE:
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBQueryError(error_info)
+            self.__handel_generate_sql_error(str(sc))
 
         return self._paginate_query(sql_str, params=params, page_index=page_index, page_size=page_size)
 
@@ -196,18 +182,12 @@ class BaseTable(object):
         if not insert_data:
             error_info = "创建内容为空"
             self.exec_state.failure(error_info)
-            raise DBCreateError(error_info)
+            raise GenerateSQLError(error_info)
 
         insert_sql, params = self._generate_insert_sql(insert_data)
 
         if not insert_sql:
-            error_info = """生成SQL失败:{}""".format(str(insert_data))
-            if len(error_info) > MAX_LOG_SIZE:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBCreateError(error_info)
+            self.__handel_generate_sql_error(str(insert_data))
 
         return self._create(insert_sql, params=params)
 
@@ -228,24 +208,18 @@ class BaseTable(object):
         if not data_keys:
             error_info = "创建的数据字段为空"
             self.exec_state.failure(error_info)
-            raise DBCreateError(error_info)
+            raise GenerateSQLError(error_info)
 
         for insert_data in insert_data_list:
             if data_keys != insert_data.keys():
                 error_info = """创建的字段不一致:\n第一行: {0}\n异常行: {1}
                 """.format(",".join(data_keys), ",".join(data_keys.keys()))
                 self.exec_state.failure(error_info)
-                raise DBCreateError(error_info)
+                raise GenerateSQLError(error_info)
 
         insert_sql, params, template = self._generate_batch_insert_sql(insert_data_list)
         if not insert_sql:
-            error_info = """生成SQL失败:{}""".format(str(insert_data_list[0]))
-            if len(error_info) > MAX_LOG_SIZE:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBCreateError(error_info)
+            self.__handel_generate_sql_error(str(insert_data_list[0]))
 
         return self._batch_create(insert_sql, params=params, template=template, page_size=page_size, fetch=fetch)
 
@@ -261,18 +235,12 @@ class BaseTable(object):
         if not sc:
             error_info = "未设定删除条件"
             self.exec_state.failure(error_info)
-            raise DBDeleteError(error_info)
+            raise GenerateSQLError(error_info)
 
         delete_sql, params = self._generate_delete_sql(sc)
 
         if not delete_sql:
-            error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > MAX_LOG_SIZE//2:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBDeleteError(error_info)
+            self.__handel_generate_sql_error(str(sc))
 
         return self._delete(delete_sql, params=params)
 
@@ -287,22 +255,16 @@ class BaseTable(object):
         if not update_dict:
             error_info = "更新内容为空"
             self.exec_state.failure(error_info)
-            raise DBUpdateError(error_info)
+            raise GenerateSQLError(error_info)
 
         if not sc:
             error_info = "更新未设定条件"
             self.exec_state.failure(error_info)
-            raise DBUpdateError(error_info)
+            raise GenerateSQLError(error_info)
 
         update_sql, params = self._generate_update_sql(update_dict, sc)
         if not update_sql:
-            error_info = """生成SQL失败:{}""".format(str(sc))
-            if len(error_info) > MAX_LOG_SIZE//2:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBUpdateError(error_info)
+            self.__handel_generate_sql_error(str(sc))
 
         return self._write(update_sql, params=params)
 
@@ -342,19 +304,13 @@ class BaseTable(object):
                 error_info = """更新字段不一致:\n第一行: {0}\n异常行: {1}
                 """.format(",".join(data_keys), ",".join(update_dict.keys()))
                 self.exec_state.failure(error_info)
-                raise DBUpdateError(error_info)
+                raise GenerateSQLError(error_info)
 
         update_sql, params, template = self._generate_batch_update_sql(update_data_list, data_keys,
                                                                        condition_keys=condition_keys,
                                                                        field_type=field_type)
         if not update_sql:
-            error_info = """生成SQL失败:{}""".format(update_data_list[0])
-            if len(error_info) > MAX_LOG_SIZE//2:
-                # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
-                error_info = error_info[:MAX_LOG_SIZE//2] + error_info[-MAX_LOG_SIZE//2:]
-
-            self.exec_state.failure(error_info)
-            raise DBUpdateError(error_info)
+            self.__handel_generate_sql_error(update_data_list[0])
 
         return self._batch_write(update_sql, params=params, template=template, page_size=page_size, fetch=fetch)
 
@@ -794,6 +750,15 @@ class BaseTable(object):
 
             return sql_str, params
 
+    def __handel_generate_sql_error(self, sc, raise_error=True):
+        error_info = """生成SQL失败:{}""".format(str(sc))
+        if len(error_info) > MAX_LOG_SIZE // 2:
+            # 如果错误信息大小超过1M, 就截取前后两512K的内容存取,防止意外的存储爆炸
+            error_info = error_info[:MAX_LOG_SIZE // 2] + error_info[-MAX_LOG_SIZE // 2:]
+
+        self.exec_state.failure(error_info)
+        if raise_error:
+            raise GenerateSQLError(error_info)
 
 class LogTable(BaseTable):
     def add_log(self, record_id, log_type, log_content):

@@ -21,23 +21,18 @@ class BaseController:
         self.user_name = jwt_identity.get("user_name")
         self.conn = current_app.get_db_connect()
         self.cur = self._get_cursor(self.conn)
+        self.tables = current_app.tables
 
     def _get_cursor(self, conn, name=None):
         return conn.cursor(name=name, cursor_factory=RealDictCursor)
 
     def get_table_obj(self, table_name):
-        table_obj: BaseTable = current_app.get_table_obj(table_name, self)
+        table_obj: BaseTable = self.tables.__getattribute__(table_name)(self)
         return table_obj
 
-    def get_table_objs(self, *table_names):
-        table_objs = tuple(current_app.get_table_obj(name, self) for name in table_names)
-        return table_objs
-
-    def get_table_obj_dict(self, table_names):
-        table_obj_dict = {}
-        for name in table_names:
-            table_obj_dict[name] = current_app.get_table_obj(name, self.conn)
-        return table_obj_dict
+    def get_table(self, table_class: type):
+        table : BaseTable = table_class(self)
+        return table
 
     def __del__(self):
         """Delete the steady connection."""

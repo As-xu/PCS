@@ -19,6 +19,13 @@ class InvalidQueryConditionError(DBError):
     )
 
 
+class GenerateSQLError(BaseError):
+    """生成SQL异常"""
+    code = 562
+    description = (
+        "生成SQL异常"
+    )
+
 class DBExecuteError(DBError):
     """数据库执行异常"""
     code = 570
@@ -28,34 +35,34 @@ class DBExecuteError(DBError):
 
 
 class DBQueryError(DBExecuteError):
-    """数据库查询异常"""
+    """查询数据异常"""
     code = 571
     description = (
-        "数据库查询异常"
+        "查询数据异常"
     )
 
 
 class DBUpdateError(DBExecuteError):
-    """数据库更新异常"""
+    """更新数据异常"""
     code = 572
     description = (
-        "数据库更新异常"
+        "更新数据异常"
     )
 
 
 class DBCreateError(DBExecuteError):
-    """数据库创建异常"""
+    """创建数据异常"""
     code = 573
     description = (
-        "数据库创建异常"
+        "创建数据异常"
     )
 
 
 class DBDeleteError(DBExecuteError):
-    """数据库删除异常"""
+    """删除数据异常"""
     code = 574
     description = (
-        "DBDeleteError"
+        "删除数据异常"
     )
 
 

@@ -1,4 +1,4 @@
-from pcs import create_app
+from tts import create_app
 from gevent.pywsgi import WSGIServer
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
@@ -10,7 +10,7 @@ if __name__ == '__main__':
         app.run()
     else:
         server = WSGIServer(app.config['SERVER_NAME'],
-                            log=logging.getLogger('pcs'),
-                            error_log=logging.getLogger('pcs'),
+                            log=logging.getLogger('tts'),
+                            error_log=logging.getLogger('tts'),
                             application=app)
         server.serve_forever()

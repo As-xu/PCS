@@ -40,6 +40,7 @@ class Initializer:
         self.init_table()
         self.init_jwt()
         self.init_hook()
+        self.init_schedulers()
         self.post_init()
 
     def register_blueprints(self):
@@ -161,5 +162,8 @@ class Initializer:
         self.tts_app.after_request(RequestHook.handle_after_request)
         # 在每次请求后执行, 捕获异常
         self.tts_app.teardown_request(RequestHook.handle_teardown_request)
+
+    def init_schedulers(self):
+        pass
 
 

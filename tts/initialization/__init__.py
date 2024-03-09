@@ -48,6 +48,9 @@ class Initializer:
     def register_error_handler(self):
         from tts.common.request_handle import RequestErrorHandle
         self.tts_app.register_error_handler(DBError, RequestErrorHandle.handle_db_error)
+        self.tts_app.register_error_handler(DBCreateError, RequestErrorHandle.handle_db_error)
+        self.tts_app.register_error_handler(DBUpdateError, RequestErrorHandle.handle_db_error)
+        self.tts_app.register_error_handler(DBDeleteError, RequestErrorHandle.handle_db_error)
         self.tts_app.register_error_handler(500, RequestErrorHandle.handle_500_error)
 
     def init_db(self):

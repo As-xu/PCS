@@ -25,15 +25,9 @@ from ringstar.events import (
     EVENT_JOB_ADDED, EVENT_EXECUTOR_ADDED, EVENT_EXECUTOR_REMOVED, EVENT_ALL_JOBS_REMOVED,
     EVENT_JOB_SUBMITTED, EVENT_JOB_MAX_INSTANCES, EVENT_SCHEDULER_RESUMED, EVENT_SCHEDULER_PAUSED)
 
-try:
-    from collections.abc import MutableMapping
-except ImportError:
-    from collections import MutableMapping
+from collections.abc import MutableMapping
+from importlib.metadata import entry_points
 
-try:
-    from importlib.metadata import entry_points
-except ModuleNotFoundError:
-    from importlib_metadata import entry_points
 
 #: constant indicating a scheduler's stopped state
 STATE_STOPPED = 0

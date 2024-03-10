@@ -110,7 +110,7 @@ def trigger_to_dict(trigger):
 
 def fix_job_def(job_def):
     """
-    Replaces the datetime in string by datetime object.
+    转化为datetime对象
     """
     if isinstance(job_def.get("start_date"), str):
         job_def["start_date"] = dateutil.parser.parse(job_def.get("start_date"))
@@ -153,228 +153,23 @@ def wsgi_to_bytes(data):
 class RingStarScheduler(object):
     """Provides a scheduler integrated to Flask."""
 
-    def __init__(self, scheduler=None, app=None):
+    def __init__(self, scheduler=None):
         self._scheduler = scheduler or BackgroundScheduler()
-        self._authentication_callback = None
-
-        self.auth = None
-        self.api_enabled = False
-        self.api_prefix = "/scheduler"
-        self.endpoint_prefix = "scheduler."
         self.app = None
 
-        if app:
-            self.init_app(app)
-
-    @property
-    def running(self):
-        """Get true whether the scheduler is running."""
-        return self._scheduler.running
-
-    @property
-    def state(self):
-        """Get the state of the scheduler."""
-        return self._scheduler.state
-
-    @property
-    def scheduler(self):
-        """Get the base scheduler."""
-        return self._scheduler
-
-    @property
-    def task(self):
-        """Get the base scheduler decorator"""
-        return self._scheduler.scheduled_job
 
     def init_app(self, app):
-        """Initialize the APScheduler with a Flask application instance."""
+        """初始化"""
 
         self.app = app
-        self.app.apscheduler = self
+        self.app.scheduler = self
 
         self._load_config()
         self._load_jobs()
 
-        if self.api_enabled:
-            self._load_api()
-
-    def start(self, paused=False):
-        """
-        Start the scheduler.
-        :param bool paused: if True, don't start job processing until resume is called.
-        """
-
-        # Flask in debug mode spawns a child process so that it can restart the process each time your code changes,
-        # the new child process initializes and starts a new APScheduler causing the jobs to run twice.
-        if get_debug_flag() and not werkzeug.serving.is_running_from_reloader():
-            return
-
-        self._scheduler.start(paused=paused)
-
-    def shutdown(self, wait=True):
-        """
-        Shut down the scheduler. Does not interrupt any currently running jobs.
-
-        :param bool wait: ``True`` to wait until all currently executing jobs have finished
-        :raises SchedulerNotRunningError: if the scheduler has not been started yet
-        """
-
-        self._scheduler.shutdown(wait)
-
-    def pause(self):
-        """
-        Pause job processing in the scheduler.
-
-        This will prevent the scheduler from waking up to do job processing until :meth:`resume`
-        is called. It will not however stop any already running job processing.
-        """
-        self._scheduler.pause()
-
-    def resume(self):
-        """
-        Resume job processing in the scheduler.
-        """
-        self._scheduler.resume()
-
-    def add_listener(self, callback, mask=EVENT_ALL):
-        """
-        Add a listener for scheduler events.
-
-        When a matching event  occurs, ``callback`` is executed with the event object as its
-        sole argument. If the ``mask`` parameter is not provided, the callback will receive events
-        of all types.
-
-        For further info: https://apscheduler.readthedocs.io/en/latest/userguide.html#scheduler-events
-
-        :param callback: any callable that takes one argument
-        :param int mask: bitmask that indicates which events should be listened to
-        """
-        self._scheduler.add_listener(callback, mask)
-
-    def remove_listener(self, callback):
-        """
-        Remove a previously added event listener.
-        """
-        self._scheduler.remove_listener(callback)
-
-    def add_job(self, id, func, **kwargs):
-        """
-        Add the given job to the job list and wakes up the scheduler if it's already running.
-
-        :param str id: explicit identifier for the job (for modifying it later)
-        :param func: callable (or a textual reference to one) to run at the given time
-        """
-
-        job_def = dict(kwargs)
-        job_def["id"] = id
-        job_def["func"] = func
-        job_def["name"] = job_def.get("name") or id
-
-        fix_job_def(job_def)
-
-        return self._scheduler.add_job(**job_def)
-
-    def remove_job(self, id, jobstore=None):
-        """
-        Remove a job, preventing it from being run any more.
-
-        :param str id: the identifier of the job
-        :param str jobstore: alias of the job store that contains the job
-        """
-
-        self._scheduler.remove_job(id, jobstore)
-
-    def remove_all_jobs(self, jobstore=None):
-        """
-        Remove all jobs from the specified job store, or all job stores if none is given.
-
-        :param str|unicode jobstore: alias of the job store
-        """
-
-        self._scheduler.remove_all_jobs(jobstore)
-
-    def get_job(self, id, jobstore=None):
-        """
-        Return the Job that matches the given ``id``.
-
-        :param str id: the identifier of the job
-        :param str jobstore: alias of the job store that most likely contains the job
-        :return: the Job by the given ID, or ``None`` if it wasn't found
-        :rtype: Job
-        """
-
-        return self._scheduler.get_job(id, jobstore)
-
-    def get_jobs(self, jobstore=None):
-        """
-        Return a list of pending jobs (if the scheduler hasn't been started yet) and scheduled jobs, either from a
-        specific job store or from all of them.
-
-        :param str jobstore: alias of the job store
-        :rtype: list[Job]
-        """
-
-        return self._scheduler.get_jobs(jobstore)
-
-    def modify_job(self, id, jobstore=None, **changes):
-        """
-        Modify the properties of a single job. Modifications are passed to this method as extra keyword arguments.
-
-        :param str id: the identifier of the job
-        :param str jobstore: alias of the job store that contains the job
-        """
-
-        fix_job_def(changes)
-
-        if "trigger" in changes:
-            trigger, trigger_args = pop_trigger(changes)
-            self._scheduler.reschedule_job(id, jobstore, trigger, **trigger_args)
-
-        return self._scheduler.modify_job(id, jobstore, **changes)
-
-    def pause_job(self, id, jobstore=None):
-        """
-        Pause the given job until it is explicitly resumed.
-
-        :param str id: the identifier of the job
-        :param str jobstore: alias of the job store that contains the job
-        """
-        self._scheduler.pause_job(id, jobstore)
-
-    def resume_job(self, id, jobstore=None):
-        """
-        Resume the schedule of the given job, or removes the job if its schedule is finished.
-
-        :param str id: the identifier of the job
-        :param str jobstore: alias of the job store that contains the job
-        """
-        self._scheduler.resume_job(id, jobstore)
-
-    def run_job(self, id, jobstore=None):
-        """
-        Run the given job without scheduling it.
-        :param id: the identifier of the job.
-        :param str jobstore: alias of the job store that contains the job
-        :return:
-        """
-        job = self._scheduler.get_job(id, jobstore)
-
-        if not job:
-            raise JobLookupError(id)
-
-        job.func(*job.args, **job.kwargs)
-
-    def authenticate(self, func):
-        """
-        A decorator that is used to register a function to authenticate a user.
-        :param func: The callback to authenticate.
-        """
-        self._authentication_callback = func
-        return func
-
     def _load_config(self):
         """
-        Load the configuration from the Flask configuration.
+        加载配置
         """
         options = dict()
 
@@ -396,15 +191,9 @@ class RingStarScheduler(object):
 
         self._scheduler.configure(**options)
 
-        self.auth = self.app.config.get("SCHEDULER_AUTH", self.auth)
-        self.api_enabled = self.app.config.get("SCHEDULER_VIEWS_ENABLED", self.api_enabled)  # for compatibility reason
-        self.api_enabled = self.app.config.get("SCHEDULER_API_ENABLED", self.api_enabled)
-        self.api_prefix = self.app.config.get("SCHEDULER_API_PREFIX", self.api_prefix)
-        self.endpoint_prefix = self.app.config.get("SCHEDULER_ENDPOINT_PREFIX", self.endpoint_prefix)
-
     def _load_jobs(self):
         """
-        Load the job definitions from the Flask configuration.
+        加载任务
         """
         jobs = self.app.config.get("SCHEDULER_JOBS")
 
@@ -415,72 +204,181 @@ class RingStarScheduler(object):
             for job in jobs:
                 self.add_job(**job)
 
-    def _load_api(self):
+    @property
+    def state(self):
+        """调度器状态"""
+        return self._scheduler.state
+
+    @property
+    def scheduler(self):
+        """获取调度器"""
+        return self._scheduler
+
+    @property
+    def task(self):
+        """获取基本调度程序装饰器"""
+        return self._scheduler.scheduled_job
+
+    def start(self, paused=False):
         """
-        Add the routes for the scheduler API.
+        开始定时任务
+        :param bool paused: 如果为True, 那么不会运行job, 直到调用resume方法
         """
-        # self._add_url_route("get_scheduler_info", "", api.get_scheduler_info, "GET")
-        # self._add_url_route("pause_scheduler", "/pause", api.pause_scheduler, "POST")
-        # self._add_url_route("resume_scheduler", "/resume", api.resume_scheduler, "POST")
-        # self._add_url_route("start_scheduler", "/start", api.start_scheduler, "POST")
-        # self._add_url_route("shutdown_scheduler", "/shutdown", api.shutdown_scheduler, "POST")
-        # self._add_url_route("add_job", "/jobs", api.add_job, "POST")
-        # self._add_url_route("get_job", "/jobs/<job_id>", api.get_job, "GET")
-        # self._add_url_route("get_jobs", "/jobs", api.get_jobs, "GET")
-        # self._add_url_route("delete_job", "/jobs/<job_id>", api.delete_job, "DELETE")
-        # self._add_url_route("update_job", "/jobs/<job_id>", api.update_job, "PATCH")
-        # self._add_url_route("pause_job", "/jobs/<job_id>/pause", api.pause_job, "POST")
-        # self._add_url_route("resume_job", "/jobs/<job_id>/resume", api.resume_job, "POST")
-        # self._add_url_route("run_job", "/jobs/<job_id>/run", api.run_job, "POST")
+        # 调试模式下的 Flask 会生成一个子进程，以便每次代码更改时它都可以重新启动该进程，新的子进程会初始化并启动一个新的 APScheduler，从而导致作业运行两次。
+        # is_running_from_reloader 为True 则说明当前程序式主进程,不是子进程
+        if get_debug_flag() and not werkzeug.serving.is_running_from_reloader():
+            return
 
-    def _add_url_route(self, endpoint, rule, view_func, method):
+        self._scheduler.start(paused=paused)
+
+    def shutdown(self, wait=True):
         """
-        Add a Flask route.
-        :param str endpoint: The endpoint name.
-        :param str rule: The endpoint url.
-        :param view_func: The endpoint func
-        :param str method: The http method.
+        关闭调度程序。 但不中断任何当前正在运行的job。
+
+        :param bool wait: wait为True会等待所有当前正在执行的job完成
+        如果调度程序尚未启动会引发异常 SchedulerNotRunningError
         """
-        if self.api_prefix:
-            rule = self.api_prefix + rule
 
-        if self.endpoint_prefix:
-            endpoint = self.endpoint_prefix + endpoint
+        self._scheduler.shutdown(wait)
 
-        self.app.add_url_rule(
-            rule,
-            endpoint,
-            self._apply_auth(view_func),
-            methods=[method]
-        )
-
-    def _apply_auth(self, view_func):
+    def pause(self):
         """
-        Apply decorator to authenticate the user who is making the request.
-        :param view_func: The flask view func.
+        暂停调度程序中的作业处理。
+
+        This will prevent the scheduler from waking up to do job processing until :meth:`resume`
+        is called. It will not however stop any already running job processing.
         """
-        @functools.wraps(view_func)
-        def decorated(*args, **kwargs):
-            if not self.auth:
-                return view_func(*args, **kwargs)
+        self._scheduler.pause()
 
-            auth_data = self.auth.get_authorization()
-
-            if auth_data is None:
-                return self._handle_authentication_error()
-
-            if not self._authentication_callback or not self._authentication_callback(auth_data):
-                return self._handle_authentication_error()
-
-            return view_func(*args, **kwargs)
-
-        return decorated
-
-    def _handle_authentication_error(self):
+    def resume(self):
         """
-        Return an authentication error.
+        恢复调度程序中的作业处理。
         """
-        response = make_response("Access Denied")
-        response.headers["WWW-Authenticate"] = self.auth.get_authenticate_header()
-        response.status_code = 401
-        return response
+        self._scheduler.resume()
+
+    def add_listener(self, callback, mask=EVENT_ALL):
+        """
+        添加调度器事件的监听
+
+        当匹配事件发生时，将使用事件对象作为其唯一参数来执行“callback”。 如果未提供“mask”参数，回调将接收所有类型的事件
+
+        :param callback: 回调函数
+        :param int mask: 事件掩码
+        """
+        self._scheduler.add_listener(callback, mask)
+
+    def remove_listener(self, callback):
+        """
+        移除回调函数
+        """
+        self._scheduler.remove_listener(callback)
+
+    def add_job(self, job_id, func, **kwargs):
+        """
+        将给定作业添加到作业列表中，并唤醒调度程序（如果它已在运行）。
+
+        :param str id：作业的显式标识符（用于稍后修改）
+        :param func: 可调用（或对其的文本引用）以在给定时间运行
+        """
+
+        job_def = dict(kwargs)
+        job_def["id"] = job_id
+        job_def["func"] = func
+        job_def["name"] = job_def.get("name") or job_id
+
+        fix_job_def(job_def)
+
+        return self._scheduler.add_job(**job_def)
+
+    def remove_job(self, job_id, jobstore=None):
+        """
+        删除作业，并防止其再运行。
+
+        :param str id: job的id
+        :param str jobstore: 包含job的jobstore名字
+        """
+
+        self._scheduler.remove_job(job_id, jobstore)
+
+    def remove_all_jobs(self, jobstore=None):
+        """
+        从指定的jobstore中删除所有lob，如果没有给出，则删除所有jobstore。
+
+        :param str|unicode jobstore: jobstore的别名
+        """
+
+        self._scheduler.remove_all_jobs(jobstore)
+
+    def get_job(self, job_id, jobstore=None):
+        """
+        根据id返回job对象,没有则返回None
+
+        :param str job_id: job的唯一标识符
+        :param str jobstore: 最有可能包含该job的jobstore的别名
+
+        """
+
+        return self._scheduler.get_job(job_id, jobstore)
+
+    def get_jobs(self, jobstore=None):
+        """
+        从特定作业存储或所有作业存储中返回挂起作业（如果计划程序尚未启动）和计划作业的列表。
+        :param str jobstore: 作业存储的别名
+        :rtype: list[Job]
+        """
+
+        return self._scheduler.get_jobs(jobstore)
+
+    def modify_job(self, job_id, jobstore=None, **changes):
+        """
+        修改单个作业的属性。changes作为额外的关键字参数传递给此方法。
+
+        :param str job_id: job的唯一标识符
+        :param str jobstore: 包含作业的作业存储的别名
+        """
+
+        fix_job_def(changes)
+
+        if "trigger" in changes:
+            trigger, trigger_args = pop_trigger(changes)
+            self._scheduler.reschedule_job(job_id, jobstore, trigger, **trigger_args)
+
+        return self._scheduler.modify_job(job_id, jobstore, **changes)
+
+    def pause_job(self, job_id, jobstore=None):
+        """
+        暂停任务, 可通过resume_job回复
+
+        :param str job_id: job的唯一标识符
+        :param str jobstore: 包含作业的作业存储的别名
+        """
+        self._scheduler.pause_job(job_id, jobstore)
+
+    def resume_job(self, job_id, jobstore=None):
+        """
+        恢复给定作业的计划，或者在其计划完成时删除该作业。
+
+        :param str job_id: job的唯一标识符
+        :param str jobstore: 包含作业的作业存储的别名
+        """
+        # 待修改
+
+        self._scheduler.resume_job(job_id, jobstore)
+
+    def run_job(self, job_id, jobstore=None):
+        """
+        不通过调度任务, 直接运行给定的作业
+        :param job_id: job的唯一标识符
+        :param str jobstore: 包含作业的作业存储的别名
+        :return:
+        """
+        job = self._scheduler.get_job(job_id, jobstore)
+
+        if not job:
+            raise JobLookupError(job_id)
+
+        job.func(*job.args, **job.kwargs)
+
+
+
+

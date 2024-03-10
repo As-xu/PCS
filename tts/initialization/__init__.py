@@ -164,6 +164,7 @@ class Initializer:
         self.tts_app.teardown_request(RequestHook.handle_teardown_request)
 
     def init_schedulers(self):
-        pass
-
+        from tts.common.scheduler import RingStarScheduler
+        scheduler = RingStarScheduler()
+        scheduler.init_app(self.tts_app)
 

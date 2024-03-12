@@ -1,24 +1,25 @@
-import functools
 import logging
-import socket
 import werkzeug
+import dateutil.parser
+
+from collections import OrderedDict
+from flask.helpers import get_debug_flag
+from pytz import utc
 
 from ringstar.events import EVENT_ALL
 from ringstar.schedulers.background import BackgroundScheduler
+from ringstar.executors.pool import ThreadPoolExecutor
 from ringstar.jobstores.base import JobLookupError
-from flask import make_response
-from flask.helpers import get_debug_flag
-
-LOGGER = logging.getLogger(__name__)
-
-
-
-import dateutil.parser
-
+from ringstar.jobstores.redis import RedisJobStore
 from ringstar.triggers.cron import CronTrigger
 from ringstar.triggers.date import DateTrigger
 from ringstar.triggers.interval import IntervalTrigger
-from collections import OrderedDict
+
+from datetime import datetime
+
+
+logger = logging.getLogger(__name__)
+
 
 
 def job_to_dict(job):
@@ -157,7 +158,6 @@ class RingStarScheduler(object):
         self._scheduler = scheduler or BackgroundScheduler()
         self.app = None
 
-
     def init_app(self, app):
         """初始化"""
 
@@ -171,38 +171,45 @@ class RingStarScheduler(object):
         """
         加载配置
         """
-        options = dict()
+        redis_config = {
+            'host': '106.75.237.181',
+            'port': '6379',
+            'db': 0,
+            'password': '1756232088'
+        }
 
-        job_stores = self.app.config.get("SCHEDULER_JOBSTORES")
-        if job_stores:
-            options["jobstores"] = job_stores
+        # coalesce: 当由于某种原因导致某个job积攒了好几次没有实际运行（比如说系统挂了5分钟后恢复，有一个任务是每分钟跑一次的，
+        # 按道理说这5分钟内本来是“计划”运行5次的，但实际没有执行），如果coalesce为True，下次这个job被submit给executor时，
+        # 只会执行1次，也就是最后这次，如果为False，那么会执行5次（不一定，因为还有其他条件，看后面misfire_grace_time的解释）。
 
-        executors = self.app.config.get("SCHEDULER_EXECUTORS")
-        if executors:
-            options["executors"] = executors
+        # max_instance: 每个job在同一时刻能够运行的最大实例数, 默认情况下为1个, 可以指定为更大值,
+        # 这样即使上个job还没运行完同一个job又被调度的话也能够再开一个线程执行。
 
-        job_defaults = self.app.config.get("SCHEDULER_JOB_DEFAULTS")
-        if job_defaults:
-            options["job_defaults"] = job_defaults
+        # misfire_grace_time: 单位为秒, 假设有这么一种情况, 当某一job被调度时刚好线程池都被占满, 调度器会选择将该job排队不运行,
+        # misfire_grace_time参数则是在线程池有可用线程时会比对该job的应调度时间跟当前时间的差值, 如果差值 < misfire_grace_time时,
+        # 调度器会再次调度该job.反之该job的执行状态为EVENTJOBMISSED了, 即错过运行
 
-        timezone = self.app.config.get("SCHEDULER_TIMEZONE")
-        if timezone:
-            options["timezone"] = timezone
-
+        options = {
+            "jobstores":{
+                'default': RedisJobStore(**redis_config)
+            },
+            "executors":{
+                'default': ThreadPoolExecutor(20),  # 默认线程数
+            },
+            "job_defaults":{
+                "coalesce": True,
+                "max_instance": 1,
+                "misfire_grace_time": None
+            },
+            "timezone": utc
+        }
         self._scheduler.configure(**options)
 
     def _load_jobs(self):
         """
         加载任务
         """
-        jobs = self.app.config.get("SCHEDULER_JOBS")
-
-        if not jobs:
-            jobs = self.app.config.get("JOBS")
-
-        if jobs:
-            for job in jobs:
-                self.add_job(**job)
+        pass
 
     @property
     def state(self):
@@ -226,10 +233,12 @@ class RingStarScheduler(object):
         """
         # 调试模式下的 Flask 会生成一个子进程，以便每次代码更改时它都可以重新启动该进程，新的子进程会初始化并启动一个新的 APScheduler，从而导致作业运行两次。
         # is_running_from_reloader 为True 则说明当前程序式主进程,不是子进程
+
         if get_debug_flag() and not werkzeug.serving.is_running_from_reloader():
             return
 
         self._scheduler.start(paused=paused)
+        logger.info("定时任务已启动")
 
     def shutdown(self, wait=True):
         """
@@ -240,6 +249,7 @@ class RingStarScheduler(object):
         """
 
         self._scheduler.shutdown(wait)
+        logger.info("定时任务已关闭")
 
     def pause(self):
         """
@@ -249,12 +259,14 @@ class RingStarScheduler(object):
         is called. It will not however stop any already running job processing.
         """
         self._scheduler.pause()
+        logger.info("定时任务已暂停")
 
     def resume(self):
         """
         恢复调度程序中的作业处理。
         """
         self._scheduler.resume()
+        logger.info("定时任务已恢复")
 
     def add_listener(self, callback, mask=EVENT_ALL):
         """
@@ -273,28 +285,18 @@ class RingStarScheduler(object):
         """
         self._scheduler.remove_listener(callback)
 
-    def add_job(self, job_id, func, **kwargs):
+    def add_job(self, job_data):
         """
         将给定作业添加到作业列表中，并唤醒调度程序（如果它已在运行）。
-
-        :param str id：作业的显式标识符（用于稍后修改）
-        :param func: 可调用（或对其的文本引用）以在给定时间运行
         """
 
-        job_def = dict(kwargs)
-        job_def["id"] = job_id
-        job_def["func"] = func
-        job_def["name"] = job_def.get("name") or job_id
-
-        fix_job_def(job_def)
-
-        return self._scheduler.add_job(**job_def)
+        return self._scheduler.add_job(**job_data)
 
     def remove_job(self, job_id, jobstore=None):
         """
         删除作业，并防止其再运行。
 
-        :param str id: job的id
+        :param str job_id: job的id
         :param str jobstore: 包含job的jobstore名字
         """
 
@@ -379,6 +381,13 @@ class RingStarScheduler(object):
 
         job.func(*job.args, **job.kwargs)
 
+    def print_jobs(self, jobstore=None, out=None):
+        self._scheduler.print_jobs(jobstore, out)
 
+def run_scheduler_func(*args, **kwargs):
+    logger.info("success")
+    with open(r"F:\PCSProject\TTS\test.txt", "a+") as f:
+        now_time = str(datetime.utcnow())
+        f.write(now_time)
 
 

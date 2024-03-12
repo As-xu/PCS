@@ -13,10 +13,8 @@ try:
 except ImportError:  # pragma: nocover
     import pickle
 
-try:
-    from redis import Redis
-except ImportError:  # pragma: nocover
-    raise ImportError('RedisJobStore requires redis installed')
+from redis import Redis
+
 
 
 class RedisJobStore(BaseJobStore):

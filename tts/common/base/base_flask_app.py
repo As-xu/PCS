@@ -12,6 +12,7 @@ class BaseFlaskApp(Flask):
         self.__tables = Tables()
         self.__db_pool = DBPool()
         self.dbs_conf = {}
+        self.scheduler = None
         super(BaseFlaskApp, self).__init__(*args, **kwargs)
 
     @property

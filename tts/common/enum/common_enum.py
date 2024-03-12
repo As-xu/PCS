@@ -12,12 +12,7 @@ class LogType(BaseEnum):
 class ProcessStatus(BaseEnum):
     """
     通用流程状态
-    等待开始 WaitStart
-    处理中 Processing
-    暂停 Pause
-    结束 Finish
-    错误 Error
-    跳过 Skip
+    等待开始 WaitStart / 处理中 Processing / 暂停 Pause/ 结束 Finish / 错误 Error / 跳过 Skip
     """
     not_ready = 10
     WaitStart = 20
@@ -32,12 +27,7 @@ class ProcessStatus(BaseEnum):
 class CommonObjectStatus(BaseEnum):
     """
     通用对象状态
-    草稿 Draft
-    可用 Available
-    弃用 Deprecated
-    取消 Cancel
-    完成 Completed
-    异常 Exceptional
+    草稿 Draft / 可用 Available / 弃用 Deprecated / 取消 Cancel / 完成 Completed / 异常 Exceptional
     """
     Draft = 10
     Available = 20
@@ -45,3 +35,14 @@ class CommonObjectStatus(BaseEnum):
     Cancel = 40
     Completed = 50
     Exceptional = 60
+
+
+@unique
+class DataChangeMode(BaseEnum):
+    """
+    数据更改枚举
+    创建 Create / 更新 Update / 删除 Delete
+    """
+    Create = 1
+    Update = 0
+    Delete = -1

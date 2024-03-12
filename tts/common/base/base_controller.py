@@ -22,6 +22,7 @@ class BaseController:
         self.conn = current_app.get_db_connect()
         self.cur = self._get_cursor(self.conn)
         self.tables = current_app.tables
+        self.scheduler = current_app.scheduler
 
     def _get_cursor(self, conn, name=None):
         return conn.cursor(name=name, cursor_factory=RealDictCursor)

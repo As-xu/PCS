@@ -27,6 +27,7 @@ from ringstar.events import (
 
 from collections.abc import MutableMapping
 from importlib.metadata import entry_points
+from importlib import import_module
 
 
 #: constant indicating a scheduler's stopped state
@@ -70,9 +71,32 @@ class BaseScheduler(six.with_metaclass(ABCMeta)):
         _executor_plugins = {ep.name: ep for ep in entry_points(group='ringstar.executors')}
         _jobstore_plugins = {ep.name: ep for ep in entry_points(group='ringstar.jobstores')}
 
-    _trigger_classes = {}
-    _executor_classes = {}
-    _jobstore_classes = {}
+    a = import_module('ringstar')
+
+    _trigger_classes = {
+        "and": import_module('ringstar.triggers.combining').__getattribute__("AndTrigger"),
+        "cron": import_module('ringstar.triggers.cron').__getattribute__("CronTrigger"),
+        "date": import_module('ringstar.triggers.date').__getattribute__("DateTrigger"),
+        "interval": import_module('ringstar.triggers.interval').__getattribute__("IntervalTrigger"),
+        "or": import_module('ringstar.triggers.combining').__getattribute__("OrTrigger"),
+    }
+    _jobstore_classes = {
+        # "memory": import_module('ringstar.jobstores.memory').__getattribute__("MemoryJobStore"),
+        # "mongodb": import_module('ringstar.jobstores.mongodb').__getattribute__("MongoDBJobStore"),
+        "redis": import_module('ringstar.jobstores.redis').__getattribute__("RedisJobStore"),
+        # "rethinkdb": import_module('ringstar.jobstores.rethinkdb').__getattribute__("RethinkDBJobStore"),
+        # "sqlalchemy": import_module('ringstar.jobstores.sqlalchemy').__getattribute__("SQLAlchemyJobStore"),
+        # "zookeeper": import_module('ringstar.jobstores.zookeeper').__getattribute__("ZooKeeperJobStore"),
+    }
+    _executor_classes = {
+        # "asyncio": import_module('ringstar.executors.asyncio').__getattribute__("AsyncIOExecutor"),
+        "debug": import_module('ringstar.executors.debug').__getattribute__("DebugExecutor"),
+        # "gevent": import_module('ringstar.executors.gevent').__getattribute__("GeventExecutor"),
+        "processpool": import_module('ringstar.executors.pool').__getattribute__("ProcessPoolExecutor"),
+        "threadpool": import_module('ringstar.executors.pool').__getattribute__("ThreadPoolExecutor"),
+        # "tornado": import_module('ringstar.executors.tornado').__getattribute__("TornadoExecutor"),
+        # "twisted": import_module('ringstar.executors.zookeeper').__getattribute__("TwistedExecutor"),
+    }
 
     #
     # Public API
@@ -97,22 +121,17 @@ class BaseScheduler(six.with_metaclass(ABCMeta)):
 
     def configure(self, gconfig={}, prefix='ringstar.', **options):
         """
-        Reconfigures the scheduler with the given options.
+        使用给定选项重新配置调度程序, 仅当调度程序未运行时才能完成。
+        如果调度程序已经运行会引发SchedulerAlreadyRunningError异常
 
-        Can only be done when the scheduler isn't running.
-
-        :param dict gconfig: a "global" configuration dictionary whose values can be overridden by
-            keyword arguments to this method
-        :param str|unicode prefix: pick only those keys from ``gconfig`` that are prefixed with
-            this string (pass an empty string or ``None`` to use all keys)
-        :raises SchedulerAlreadyRunningError: if the scheduler is already running
+        :param dict gconfig: 一个“全局”配置字典，其值可以被此方法的关键字参数覆盖，
+        :param str|unicode prefix:  仅从“gconfig”中选择以该字符串为前缀的键（传递空字符串或“None”以使用所有键
 
         """
         if self.state != STATE_STOPPED:
             raise SchedulerAlreadyRunningError
 
-        # If a non-empty prefix was given, strip it from the keys in the
-        # global configuration dict
+        # 如果给出了非空前缀，则将其从全局配置字典中的键中删除
         if prefix:
             prefixlen = len(prefix)
             gconfig = dict((key[prefixlen:], value) for key, value in six.iteritems(gconfig)

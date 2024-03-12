@@ -664,7 +664,7 @@ class BaseTable(object):
                 })
 
     def __remove_extra_field(self, value_dict):
-        value_dict.pop(JCK.MODIFY_TYPE, None)
+        value_dict.pop(JCK.MODIFY_MODE, None)
 
     def __generate_condition_sql(self, sc):
         conditions = self.__do_special_query_condition(sc.condition)

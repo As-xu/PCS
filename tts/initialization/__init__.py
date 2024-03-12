@@ -24,15 +24,16 @@ class Initializer:
     def flask_app(self):
         return self.tts_app
 
-    def pre_init(self):
+    def init_pre(self):
         logger.info("开始初始化")
         self.tts_app.json_encoder = JSONEncoder
 
-    def post_init(self):
+    def init_final(self):
+        self.tts_app.scheduler.start()
         logger.info("初始化成功")
 
     def init_app(self):
-        self.pre_init()
+        self.init_pre()
         self.init_log()
         self.register_blueprints()
         self.register_error_handler()
@@ -41,7 +42,7 @@ class Initializer:
         self.init_jwt()
         self.init_hook()
         self.init_schedulers()
-        self.post_init()
+        self.init_final()
 
     def register_blueprints(self):
         self.tts_app.register_blueprint(base_bp)

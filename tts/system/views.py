@@ -17,16 +17,16 @@ def query_scheduler_info():
 def change_scheduler_status():
     json_data = request.json
     c = SchedulerController(request)
-    return c.query_scheduler_info(json_data)
+    return c.change_scheduler_status(json_data)
 
 @bp.route('/save_scheduler_job', methods=["POST"])
 def save_scheduler_job():
     json_data = request.json
     c = SchedulerController(request)
-    return c.query_scheduler_info(json_data)
+    return c.save_scheduler_job(json_data)
 
 @bp.route('/query_one_scheduler_job', methods=["POST"])
-def query_all_scheduler_job():
+def query_one_scheduler_job():
     json_data = request.json
     c = SchedulerController(request)
     return c.query_one_scheduler_job(json_data)
@@ -38,7 +38,7 @@ def query_all_scheduler_job():
     return c.query_all_scheduler_job(json_data)
 
 @bp.route('/change_scheduler_job_status', methods=["POST"])
-def query_all_scheduler_job():
+def change_scheduler_job_status():
     json_data = request.json
     c = SchedulerController(request)
     return c.change_scheduler_job_status(json_data)

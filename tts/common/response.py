@@ -1,5 +1,6 @@
 from tts.common.enum.system_enum import ResponseState
 from flask import jsonify
+from flask import Response as FlaskResponse
 import logging
 
 
@@ -31,8 +32,8 @@ class Response(object):
 
     @staticmethod
     def json_data(json_data, debug=None):
-        return jsonify(code=ResponseState.SUCCESS.value, msg="", data=json_data, debug=None)
+        return jsonify(code=ResponseState.SUCCESS.value, msg="", data=json_data, debug=debug)
 
     @staticmethod
-    def html_data(json_data):
-        return jsonify(code=ResponseState.SUCCESS.value, msg="", data=json_data, debug=None)
+    def html_data(data, status=None, headers=None, mimetype=None, content_type=None):
+        return FlaskResponse(data, status=status, headers=headers, mimetype=mimetype, content_type=content_type)

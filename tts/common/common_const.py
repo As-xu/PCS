@@ -5,7 +5,7 @@ __all__ = [
 class JsonCommonKey:
     PAGE_INDEX = "page_index"
     PAGE_limit = "page_limit"
-    MODIFY_TYPE = 'modify_type'
+    MODIFY_MODE = 'modify_mode'
     QUERY_CONDITION = 'query_params'
     ORDER_BY = "order"
     GROUP_BY = "group"

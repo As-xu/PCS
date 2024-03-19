@@ -45,4 +45,3 @@ venv*
 tmp
 
 gunicron_conf.py
-db_config.json

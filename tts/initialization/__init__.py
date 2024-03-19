@@ -5,9 +5,11 @@ from tts.common.json import JSONEncoder
 from tts.extensions.db_link.pooled_db import PooledDB
 from flask_jwt_extended import JWTManager
 from flask.logging import default_handler
+from tts.common.redis_operate import RedisPoolManager
 import logging
 import logging.handlers
 import psycopg2
+import yaml
 import os
 import sys
 import json
@@ -25,11 +27,13 @@ class Initializer:
         return self.tts_app
 
     def init_pre(self):
+
         logger.info("开始初始化")
         self.tts_app.json_encoder = JSONEncoder
 
     def init_final(self):
         self.tts_app.scheduler.start()
+        self.tts_app.scheduler.remove_all_jobs()
         logger.info("初始化成功")
 
     def init_app(self):
@@ -60,7 +64,7 @@ class Initializer:
         db_conf_path = config.get("DB_CONF_PATH") or ""
         try:
             with open(db_conf_path, "r") as f:
-                db_conf = json.load(f)
+                db_conf = yaml.full_load(f)
         except Exception as e:
             raise "读取数据库配置失败: %s" % str(e)
 
@@ -85,8 +89,19 @@ class Initializer:
                     raise Exception("连接数据库失败'{0}'".format(str(e)))
             # elif db_type == "mysql":
             #     creator = pymysql
-            # elif db_type == "redis":
-            #     creator = redis
+            elif db_type == "redis":
+                try:
+                    client_data = {
+                        'host': conf.get("host"),
+                        'port': conf.get("port"),
+                        'db': conf.get("db"),
+                        'password': conf.get("password"),
+                        'max_connections': conf.get("max_connections") or 30
+                    }
+                    db_pool[name] = RedisPoolManager(**client_data)
+                except Exception as e:
+                    logger.error("连接数据库失败'{0}'".format(str(e)))
+                    raise Exception("连接数据库失败'{0}'".format(str(e)))
             else:
                 continue
         logger.info("连接数据库成功")

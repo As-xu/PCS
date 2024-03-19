@@ -194,7 +194,7 @@ class RingStarScheduler(object):
                 'default': RedisJobStore(**redis_config)
             },
             "executors":{
-                'default': ThreadPoolExecutor(20),  # 默认线程数
+                'default': ThreadPoolExecutor(20),
             },
             "job_defaults":{
                 "coalesce": True,
@@ -384,10 +384,10 @@ class RingStarScheduler(object):
     def print_jobs(self, jobstore=None, out=None):
         self._scheduler.print_jobs(jobstore, out)
 
+
 def run_scheduler_func(*args, **kwargs):
     logger.info("success")
-    with open(r"F:\PCSProject\TTS\test.txt", "a+") as f:
-        now_time = str(datetime.utcnow())
-        f.write(now_time)
+
+    return True
 
 

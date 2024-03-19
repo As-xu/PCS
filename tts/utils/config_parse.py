@@ -55,7 +55,7 @@ class ConfigManager(object):
 
         self.options["DATA_DIR"] = self.options.get("DATA_DIR") or os.path.join(self.options["BASE_DIR"], 'data')
         self.options["LOG_DIR"] = self.options.get("LOG_DIR") or os.path.join(self.options["BASE_DIR"], 'log')
-        self.options["DB_CONF_PATH"] = os.path.join(os.path.abspath(''), "db_config.json")
+        self.options["DB_CONF_PATH"] = os.path.join(os.path.abspath(''), self.options.get("DB_CONF_PATH"))
         make_dirs([self.options["DATA_DIR"], self.options["LOG_DIR"]])
 
         log_level = self.options["LOG_LEVEL"]
@@ -69,6 +69,7 @@ class ConfigManager(object):
             "BASE_DIR": os.path.abspath(''),
             "LOG_FILE_NAME": "tts_server.log",
             "LOG_LEVEL": logging.INFO,
+            "DB_CONF_PATH": "",
         }
         p = RawConfigParser(defaults=defaults)
         try:

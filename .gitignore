@@ -27,7 +27,7 @@ log/
 *.swp
 *.cfg
 .env
-
+.yaml
 
 .local
 .cache

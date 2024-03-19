@@ -63,7 +63,7 @@ class SchedulerController(BaseController):
         # 按道理说这5分钟内本来是“计划”运行5次的，但实际没有执行），如果coalesce为True，下次这个job被submit给executor时，
         # 只会执行1次，也就是最后这次，如果为False，那么会执行5次（不一定，因为还有其他条件，看后面misfire_grace_time的解释）。
 
-        # max_instance: 每个job在同一时刻能够运行的最大实例数, 默认情况下为1个, 可以指定为更大值,
+        # max_instances: 每个job在同一时刻能够运行的最大实例数, 默认情况下为1个, 可以指定为更大值,
         # 这样即使上个job还没运行完同一个job又被调度的话也能够再开一个线程执行。
 
         # misfire_grace_time: 单位为秒, 假设有这么一种情况, 当某一job被调度时刚好线程池都被占满, 调度器会选择将该job排队不运行,
@@ -72,12 +72,10 @@ class SchedulerController(BaseController):
 
         misfire_grace_time = request_data.get("misfire_grace_time") or job_defaults.get("misfire_grace_time")
         coalesce = request_data.get("coalesce") or job_defaults.get("coalesce")
-        max_instances = request_data.get("coalesce") or job_defaults.get("max_instances")
-        trigger = request_data.get("trigger")
-        next_run_time = request_data.get("next_run_time") or datetime.datetime.utcnow()
-        executor = request_data.get("executor")
-        jobstore = request_data.get("jobstore")
 
+        trigger = request_data.get("trigger")
+        max_instances = request_data.get("max_instances") or job_defaults.get("max_instances")
+        next_run_time = request_data.get("next_run_time") or datetime.datetime.utcnow()
 
         modify_code = request_data.pop(JCK.MODIFY_MODE, None)
         if modify_code == DataChangeMode.Create.value:
@@ -87,9 +85,9 @@ class SchedulerController(BaseController):
 
         scheduler_job_data = {
             'id': job_store_id, 'name': func_name, 'args': args, 'kwargs': kwargs,
-            'trigger': 'interval', 'executor': executor, 'func': run_scheduler_func,
-            'misfire_grace_time': misfire_grace_time, 'coalesce': coalesce,'max_instances': max_instances,
-            'next_run_time': next_run_time, "seconds": 3
+            'trigger': trigger, 'executor': 'default', 'func': run_scheduler_func,
+            'misfire_grace_time': misfire_grace_time, 'coalesce': coalesce, 'max_instances': max_instances,
+            'next_run_time': next_run_time, "seconds": 200
         }
         if modify_code == DataChangeMode.Create.value:
             self.scheduler.add_job(scheduler_job_data)
